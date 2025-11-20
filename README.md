@@ -29,7 +29,20 @@ Automatically sync your activities from Strava to Garmin Connect with customizab
 - Docker & Docker Compose (optional)
 - Strava API application ([create one here](https://www.strava.com/settings/api))
 
-## Quick Start with Docker
+## Production Deployment
+
+For production deployment using pre-built Docker images from GitHub Container Registry:
+
+📖 **See [DEPLOYMENT.md](DEPLOYMENT.md)** for complete production deployment instructions including:
+- Using pre-built Docker images
+- Setting up reverse proxy (Nginx/Traefik)
+- SSL/TLS configuration
+- Monitoring and backups
+- Security best practices
+
+📖 **See [UPGRADE.md](UPGRADE.md)** for upgrade instructions and rollback procedures.
+
+## Quick Start with Docker (Development)
 
 1. **Clone the repository**
 ```bash
@@ -317,6 +330,8 @@ Pre-commit hooks will validate your commit messages automatically.
 
 ### Documentation
 
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment guide
+- **[UPGRADE.md](UPGRADE.md)** - Upgrade and rollback instructions
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Full contributing guidelines
 - **[PRE_COMMIT_SETUP.md](PRE_COMMIT_SETUP.md)** - Pre-commit hooks setup and usage
 - **[DOCKER_WORKFLOW.md](DOCKER_WORKFLOW.md)** - Docker image publishing workflow

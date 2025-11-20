@@ -1,0 +1,174 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: strava-garmin-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: strava_garmin
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      POSTGRES_DB: strava_garmin_sync
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - strava-garmin-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U strava_garmin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: strava-garmin-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - strava-garmin-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: ghcr.io/${GITHUB_REPO:-splagemann/strava-garmin-bridge}/backend:${IMAGE_TAG:-latest}
+    container_name: strava-garmin-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # Database
+      DATABASE_URL: postgresql://strava_garmin:${DB_PASSWORD:-changeme}@db:5432/strava_garmin_sync
+
+      # Redis
+      REDIS_URL: redis://redis:6379/0
+
+      # Strava API
+      STRAVA_CLIENT_ID: ${STRAVA_CLIENT_ID}
+      STRAVA_CLIENT_SECRET: ${STRAVA_CLIENT_SECRET}
+
+      # Security
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      SECRET_KEY: ${SECRET_KEY}
+
+      # URLs
+      BASE_URL: ${BASE_URL:-http://localhost:8000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+
+      # Environment
+      ENVIRONMENT: production
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    networks:
+      - strava-garmin-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  celery-worker:
+    image: ghcr.io/${GITHUB_REPO:-splagemann/strava-garmin-bridge}/backend:${IMAGE_TAG:-latest}
+    container_name: strava-garmin-celery-worker
+    restart: unless-stopped
+    command: celery -A app.celery_app worker --loglevel=info
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # Database
+      DATABASE_URL: postgresql://strava_garmin:${DB_PASSWORD:-changeme}@db:5432/strava_garmin_sync
+
+      # Redis
+      REDIS_URL: redis://redis:6379/0
+
+      # Strava API
+      STRAVA_CLIENT_ID: ${STRAVA_CLIENT_ID}
+      STRAVA_CLIENT_SECRET: ${STRAVA_CLIENT_SECRET}
+
+      # Security
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      SECRET_KEY: ${SECRET_KEY}
+
+      # URLs
+      BASE_URL: ${BASE_URL:-http://localhost:8000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+
+      # Environment
+      ENVIRONMENT: production
+    networks:
+      - strava-garmin-network
+
+  celery-beat:
+    image: ghcr.io/${GITHUB_REPO:-splagemann/strava-garmin-bridge}/backend:${IMAGE_TAG:-latest}
+    container_name: strava-garmin-celery-beat
+    restart: unless-stopped
+    command: celery -A app.celery_app beat --loglevel=info
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # Database
+      DATABASE_URL: postgresql://strava_garmin:${DB_PASSWORD:-changeme}@db:5432/strava_garmin_sync
+
+      # Redis
+      REDIS_URL: redis://redis:6379/0
+
+      # Strava API
+      STRAVA_CLIENT_ID: ${STRAVA_CLIENT_ID}
+      STRAVA_CLIENT_SECRET: ${STRAVA_CLIENT_SECRET}
+
+      # Security
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      SECRET_KEY: ${SECRET_KEY}
+
+      # URLs
+      BASE_URL: ${BASE_URL:-http://localhost:8000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+
+      # Environment
+      ENVIRONMENT: production
+    networks:
+      - strava-garmin-network
+    volumes:
+      - celery_beat_data:/app
+
+  frontend:
+    image: ghcr.io/${GITHUB_REPO:-splagemann/strava-garmin-bridge}/frontend:${IMAGE_TAG:-latest}
+    container_name: strava-garmin-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    networks:
+      - strava-garmin-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  celery_beat_data:
+    driver: local
+
+networks:
+  strava-garmin-network:
+    driver: bridge
