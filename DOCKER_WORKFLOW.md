@@ -70,16 +70,26 @@ Images are automatically tagged with:
 
 No special setup is required! The workflow uses `GITHUB_TOKEN` which is automatically provided by GitHub Actions.
 
-### 2. Configure Frontend API URL (Optional)
+### 2. Configure Frontend API URL (Optional - Advanced)
 
-If you need to set a custom API URL for the frontend build:
+**Note:** The frontend Docker image supports **runtime configuration** via `BACKEND_API_URL` environment variable. You typically don't need to set `VITE_API_URL` at build time.
+
+However, if you want to change the **default fallback** URL that's baked into the image:
 
 1. Go to your repository **Settings** → **Secrets and variables** → **Actions**
 2. Click **New repository secret**
 3. Name: `VITE_API_URL`
-4. Value: Your API URL (e.g., `https://api.yourdomain.com`)
+4. Value: Your default API URL (e.g., `https://api.yourdomain.com`)
 
-If not set, it defaults to `http://localhost:8000`.
+**Runtime vs Build-time Configuration:**
+- **Runtime** (Recommended): Set `BACKEND_API_URL` when running the container
+  - Same image works across all environments
+  - No rebuild needed
+- **Build-time** (Advanced): Set `VITE_API_URL` as GitHub secret
+  - Changes the default fallback URL in the image
+  - Requires rebuilding for each environment
+
+Default behavior: Runtime `BACKEND_API_URL` → Build-time `VITE_API_URL` → `http://localhost:8000`
 
 ### 3. Enable Multi-Architecture Builds (Optional)
 
@@ -290,9 +300,12 @@ git push origin v1.2.3
 - Check that you're pushing a tag matching `v*`
 - Verify `GITHUB_TOKEN` has sufficient permissions
 
-### Frontend API URL not set correctly
-- Set the `VITE_API_URL` secret in repository settings
-- Or modify the default in `.github/workflows/docker-publish.yml`
+### Frontend API URL not working
+- **For production deployment**: Set `BACKEND_API_URL` environment variable when running the container
+- **To change build-time default**: Set `VITE_API_URL` secret in repository settings
+- **For custom builds**: Modify the default in `.github/workflows/docker-publish.yml`
+
+Remember: Runtime configuration via `BACKEND_API_URL` is the recommended approach.
 
 ### Images not appearing in packages
 - Check that the workflow completed successfully
@@ -318,13 +331,17 @@ env:
 
 ### Add Build Arguments
 
-Add more build arguments in the frontend build step:
+**Note:** The frontend uses runtime configuration via `BACKEND_API_URL`. Build arguments are only needed for advanced customization.
+
+To add build-time variables to the frontend build:
 
 ```yaml
 build-args: |
   VITE_API_URL=${{ secrets.VITE_API_URL }}
   VITE_OTHER_VAR=${{ secrets.OTHER_VAR }}
 ```
+
+For runtime variables, configure them in your deployment (see [DEPLOYMENT.md](DEPLOYMENT.md)).
 
 ### Only Build on Tags
 
