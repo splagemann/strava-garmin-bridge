@@ -151,6 +151,9 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
+    environment:
+      # Runtime API URL configuration (injected at container startup)
+      BACKEND_API_URL: ${BASE_URL:-http://localhost:8000}
     ports:
       - "${FRONTEND_PORT:-3000}:80"
     networks:
