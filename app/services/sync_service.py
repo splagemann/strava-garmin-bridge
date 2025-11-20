@@ -34,12 +34,13 @@ class SyncService:
         self.garmin_service = GarminService(db)
         self.converter = ActivityConverter()
 
-    def should_sync_activity(self, activity_name: str) -> bool:
+    def should_sync_activity(self, activity_name: str, activity_type: Optional[str] = None) -> bool:
         """
         Check if activity should be synced based on user filters.
 
         Args:
             activity_name: Name/title of the activity
+            activity_type: Type of the activity (e.g., "Run", "Ride", "EBikeRide")
 
         Returns:
             True if activity should be synced, False otherwise
@@ -59,16 +60,23 @@ class SyncService:
             pattern = filter_rule.pattern
             matches = False
 
+            # Determine which field to match against
+            filter_field = getattr(filter_rule, 'filter_field', 'name')  # Default to 'name' for backward compatibility
+            if filter_field == "type" and activity_type:
+                match_value = activity_type
+            else:
+                match_value = activity_name
+
             if filter_rule.is_regex:
                 # Regex matching
                 try:
-                    matches = bool(re.search(pattern, activity_name, re.IGNORECASE))
+                    matches = bool(re.search(pattern, match_value, re.IGNORECASE))
                 except re.error as e:
                     logger.error(f"Invalid regex pattern '{pattern}': {e}")
                     continue
             else:
                 # Simple substring matching
-                matches = pattern.lower() in activity_name.lower()
+                matches = pattern.lower() in match_value.lower()
 
             if matches:
                 # If include filter matches, sync it
@@ -119,11 +127,12 @@ class SyncService:
             # Store activity metadata
             sync_log.activity_name = activity.name
             # Convert activity type to string (stravalib 2.x uses RelaxedActivityType)
-            sync_log.activity_type = str(activity.type) if activity.type else None
+            activity_type_str = str(activity.type) if activity.type else None
+            sync_log.activity_type = activity_type_str
             self.db.commit()
 
             # 2. Check if activity should be synced based on filters
-            if not self.should_sync_activity(activity.name):
+            if not self.should_sync_activity(activity.name, activity_type_str):
                 result["status"] = "skipped"
                 result["message"] = f"Activity '{activity.name}' filtered out by user rules"
                 self._update_sync_log(sync_log, "skipped", result["message"])

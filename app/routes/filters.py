@@ -16,6 +16,7 @@ router = APIRouter()
 class FilterCreate(BaseModel):
     """Request model for creating a filter."""
     filter_type: str  # "include" or "exclude"
+    filter_field: str = "name"  # "name" or "type" - field to match against
     pattern: str
     is_regex: bool = False
     active: bool = True
@@ -24,6 +25,7 @@ class FilterCreate(BaseModel):
 class FilterUpdate(BaseModel):
     """Request model for updating a filter."""
     filter_type: Optional[str] = None
+    filter_field: Optional[str] = None
     pattern: Optional[str] = None
     is_regex: Optional[bool] = None
     active: Optional[bool] = None
@@ -33,6 +35,7 @@ class FilterResponse(BaseModel):
     """Response model for filter."""
     id: int
     filter_type: str
+    filter_field: str
     pattern: str
     is_regex: bool
     active: bool
@@ -75,6 +78,13 @@ async def create_filter(
             detail="filter_type must be 'include' or 'exclude'"
         )
 
+    # Validate filter field
+    if filter_data.filter_field not in ["name", "type"]:
+        raise HTTPException(
+            status_code=400,
+            detail="filter_field must be 'name' or 'type'"
+        )
+
     # Check user exists
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -84,6 +94,7 @@ async def create_filter(
     activity_filter = ActivityFilter(
         user_id=user_id,
         filter_type=filter_data.filter_type,
+        filter_field=filter_data.filter_field,
         pattern=filter_data.pattern,
         is_regex=filter_data.is_regex,
         active=filter_data.active
@@ -144,6 +155,14 @@ async def update_filter(
                 detail="filter_type must be 'include' or 'exclude'"
             )
         activity_filter.filter_type = filter_data.filter_type
+
+    if filter_data.filter_field is not None:
+        if filter_data.filter_field not in ["name", "type"]:
+            raise HTTPException(
+                status_code=400,
+                detail="filter_field must be 'name' or 'type'"
+            )
+        activity_filter.filter_field = filter_data.filter_field
 
     if filter_data.pattern is not None:
         activity_filter.pattern = filter_data.pattern

@@ -28,8 +28,12 @@ class ActivityConverter:
         # Create track
         gpx_track = gpxpy.gpx.GPXTrack()
         gpx_track.name = activity.name
-        # Convert activity type to string (stravalib 2.x uses RelaxedActivityType)
-        gpx_track.type = str(activity.type) if activity.type else None
+        # Convert activity type to string and map to Garmin-compatible type
+        if activity.type:
+            strava_type = str(activity.type)
+            gpx_track.type = ActivityConverter.map_activity_type(strava_type)
+        else:
+            gpx_track.type = None
         gpx.tracks.append(gpx_track)
 
         # Create segment
@@ -77,16 +81,67 @@ class ActivityConverter:
             Garmin-compatible activity type
         """
         type_mapping = {
+            # Running activities
             "Run": "running",
+            "TrailRun": "trail_running",
+            "VirtualRun": "running",
+
+            # Cycling activities
             "Ride": "cycling",
+            "MountainBikeRide": "mountain_biking",
+            "GravelRide": "gravel_cycling",
             "VirtualRide": "cycling",
+            "EBikeRide": "e_bike_fitness",
+            "EMountainBikeRide": "e_bike_mountain",
+            "Handcycle": "hand_cycling",
+            "Velomobile": "cycling",
+
+            # Swimming activities
             "Swim": "swimming",
+            "OpenWaterSwim": "open_water_swimming",
+
+            # Walking/Hiking activities
             "Walk": "walking",
             "Hike": "hiking",
+
+            # Winter sports
             "AlpineSki": "skiing",
+            "BackcountrySki": "backcountry_skiing",
             "NordicSki": "cross_country_skiing",
+            "Snowboard": "snowboarding",
+            "Snowshoe": "snowshoeing",
+            "IceSkate": "ice_skating",
+
+            # Water sports
+            "Canoeing": "kayaking",
+            "Kayaking": "kayaking",
+            "Kitesurf": "kiteboarding",
+            "Rowing": "rowing",
+            "StandUpPaddling": "stand_up_paddleboarding",
+            "Surfing": "surfing",
+            "Windsurf": "windsurfing",
+
+            # Fitness activities
             "Workout": "fitness_equipment",
             "WeightTraining": "strength_training",
             "Yoga": "yoga",
+            "Pilates": "pilates",
+            "Crossfit": "cross_fit",
+            "Elliptical": "elliptical",
+            "StairStepper": "stair_climbing",
+            "RockClimbing": "rock_climbing",
+
+            # Other sports
+            "InlineSkate": "inline_skating",
+            "RollerSki": "roller_skiing",
+            "Golf": "golf",
+            "Soccer": "soccer",
+            "Basketball": "basketball",
+            "Tennis": "tennis",
+            "Badminton": "racquetball",
+            "TableTennis": "racquetball",
+            "PickleBall": "racquetball",
+            "Racquetball": "racquetball",
+            "Squash": "racquetball",
         }
         return type_mapping.get(strava_type, "other")

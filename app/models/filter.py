@@ -17,6 +17,7 @@ class ActivityFilter(Base):
 
     # Filter configuration
     filter_type = Column(String, nullable=False)  # "include" or "exclude"
+    filter_field = Column(String, nullable=False, default="name")  # "name" or "type" - field to match against
     pattern = Column(String, nullable=False)  # Text pattern or regex
     is_regex = Column(Boolean, default=False)  # Whether pattern is a regex
     active = Column(Boolean, default=True)  # Whether filter is enabled
