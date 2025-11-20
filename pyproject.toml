@@ -1,0 +1,25 @@
+[tool.black]
+line-length = 100
+target-version = ['py311']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | \.pytest_cache
+  | __pycache__
+  | migrations
+  | frontend
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+skip_gitignore = true
+known_first_party = ["app"]
+skip = ["migrations", "frontend", ".venv"]
+
+[tool.bandit]
+exclude_dirs = ["tests", "frontend", ".venv"]
+skips = ["B101"]  # Skip assert_used warnings in tests

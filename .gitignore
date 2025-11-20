@@ -95,3 +95,6 @@ docker-compose.override.yml
 *.tmp
 tmp/
 temp/
+
+# Pre-commit
+.pre-commit-config.yaml.bak

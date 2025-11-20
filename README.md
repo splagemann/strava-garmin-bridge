@@ -290,11 +290,36 @@ npm run lint
 
 ## Contributing
 
+We welcome contributions! Please follow these guidelines:
+
+### Quick Start
+
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
+2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/strava-garmin-bridge.git`
+3. Install development dependencies: `pip install -r requirements-dev.txt`
+4. Set up pre-commit hooks: `pre-commit install --hook-type pre-commit --hook-type commit-msg`
+5. Create a feature branch: `git checkout -b feat/your-feature`
+6. Make your changes and commit using [Conventional Commits](https://www.conventionalcommits.org/)
+7. Push and submit a pull request
+
+### Commit Message Format
+
+This project uses conventional commits for automatic changelog generation:
+
+```bash
+# Examples
+git commit -m "feat: add new feature"
+git commit -m "fix: resolve bug"
+git commit -m "docs: update documentation"
+```
+
+Pre-commit hooks will validate your commit messages automatically.
+
+### Documentation
+
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Full contributing guidelines
+- **[PRE_COMMIT_SETUP.md](PRE_COMMIT_SETUP.md)** - Pre-commit hooks setup and usage
+- **[DOCKER_WORKFLOW.md](DOCKER_WORKFLOW.md)** - Docker image publishing workflow
 
 ## License
 
