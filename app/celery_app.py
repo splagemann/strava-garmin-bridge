@@ -2,6 +2,7 @@
 Celery application configuration.
 """
 from celery import Celery
+from datetime import timedelta
 from app.config import settings
 
 # Create Celery app
@@ -24,4 +25,14 @@ celery_app.conf.update(
     task_soft_time_limit=240,  # 4 minutes soft limit
     worker_prefetch_multiplier=1,
     worker_max_tasks_per_child=100,
+    beat_schedule={
+        "poll-strava-activities-every-5-minutes": {
+            "task": "app.tasks.sync_tasks.poll_strava_activities_task",
+            "schedule": timedelta(minutes=5),
+            "kwargs": {
+                "lookback_days": 7,  # fetch activities from last 7 days
+                "max_activities_per_user": 100,  # increased to handle more activities
+            },
+        },
+    },
 )

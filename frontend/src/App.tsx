@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { useAuth } from './hooks/useAuth';
 import AuthPage from './pages/AuthPage';
+import CallbackPage from './pages/CallbackPage';
 import DashboardPage from './pages/DashboardPage';
 import FiltersPage from './pages/FiltersPage';
 import SyncHistoryPage from './pages/SyncHistoryPage';
@@ -46,6 +47,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/auth" element={<AuthPage />} />
+      <Route path="/auth/callback" element={<CallbackPage />} />
       <Route
         path="/"
         element={

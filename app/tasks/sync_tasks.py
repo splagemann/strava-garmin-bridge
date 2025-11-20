@@ -4,9 +4,11 @@ Celery tasks for activity synchronization.
 from celery import Task
 from app.celery_app import celery_app
 from app.database import SessionLocal
-from app.models import User
+from app.models import User, SyncLog
 from app.services.sync_service import SyncService
+from app.services.strava_service import StravaService
 import logging
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -105,3 +107,78 @@ def sync_user_activities_task(self, user_id: int, activity_ids: list):
         "queued": len(results),
         "tasks": results
     }
+
+
+@celery_app.task(bind=True, base=DatabaseTask)
+def poll_strava_activities_task(
+    self,
+    lookback_days: int = 7,
+    max_activities_per_user: int = 100
+):
+    """
+    Periodically poll Strava for new activities per user and sync them.
+
+    Args:
+        lookback_days: How far back to look for activities (in days)
+        max_activities_per_user: Cap on activities fetched per user per run
+    """
+    logger.info(f"Starting periodic Strava poll (looking back {lookback_days} days)")
+    lookback_start = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+
+    users = self.db.query(User).filter(
+        User.is_active == True
+    ).all()
+
+    for user in users:
+        # Only process users with both Strava and Garmin connected
+        if not user.strava_auth or not user.garmin_auth:
+            continue
+
+        try:
+            strava_service = StravaService(self.db)
+            sync_service = SyncService(self.db, user)
+
+            activities = strava_service.list_recent_activities(
+                user,
+                after=lookback_start,
+                limit=max_activities_per_user
+            )
+
+            logger.info(f"User {user.id}: fetched {len(activities)} activities since {lookback_start.isoformat()}")
+
+            for activity in activities:
+                strava_id = str(getattr(activity, "id", None))
+                if not strava_id:
+                    continue
+
+                # Skip if we've already synced/attempted this activity
+                existing = self.db.query(SyncLog).filter(
+                    SyncLog.user_id == user.id,
+                    SyncLog.strava_activity_id == strava_id
+                ).first()
+
+                if existing:
+                    continue
+
+                # Apply user's activity filters before syncing
+                activity_name = str(getattr(activity, "name", ""))
+                activity_type = None
+                if hasattr(activity, "type") and activity.type:
+                    # Extract activity type string (handles stravalib's format)
+                    from app.utils.activity_converter import ActivityConverter
+                    converter = ActivityConverter()
+                    activity_type = converter.extract_activity_type(activity.type)
+
+                # Check if activity matches user's filters
+                if not sync_service.should_sync_activity(activity_name, activity_type):
+                    logger.info(
+                        f"Skipping activity {strava_id} '{activity_name}' (type: {activity_type}) "
+                        f"for user {user.id} - doesn't match filters"
+                    )
+                    continue
+
+                logger.info(f"Queueing sync for user {user.id} activity {strava_id} '{activity_name}'")
+                sync_service.sync_activity(int(strava_id))
+
+        except Exception as e:
+            logger.error(f"Error polling Strava for user {user.id}: {e}", exc_info=True)

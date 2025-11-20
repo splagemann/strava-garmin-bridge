@@ -21,8 +21,13 @@ export function useAuth() {
     },
   });
 
-  const connectStrava = () => {
-    authApi.connectStrava();
+  const connectStrava = async () => {
+    try {
+      await authApi.connectStrava();
+    } catch (error) {
+      console.error('Error connecting to Strava:', error);
+      throw error;
+    }
   };
 
   const saveGarminCredentials = async (credentials: GarminCredentials) => {

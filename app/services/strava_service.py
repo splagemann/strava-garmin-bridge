@@ -205,52 +205,32 @@ class StravaService:
             logger.error(f"Error fetching streams for activity {activity_id}: {e}")
             return None
 
-    @staticmethod
-    def list_webhook_subscriptions() -> Dict[str, Any]:
+    def list_recent_activities(
+        self,
+        user: User,
+        after: Optional[datetime] = None,
+        limit: int = 50
+    ) -> list[Any]:
         """
-        List all webhook subscriptions for this application.
-
-        Returns:
-            List of subscription details
-        """
-        client = Client()
-        subscriptions = client.list_subscriptions(
-            client_id=settings.STRAVA_CLIENT_ID,
-            client_secret=settings.STRAVA_CLIENT_SECRET
-        )
-        return subscriptions
-
-    @staticmethod
-    def delete_webhook_subscription(subscription_id: int) -> None:
-        """
-        Delete a webhook subscription.
+        List recent activities for a user.
 
         Args:
-            subscription_id: ID of the subscription to delete
-        """
-        client = Client()
-        client.delete_subscription(
-            subscription_id=subscription_id,
-            client_id=settings.STRAVA_CLIENT_ID,
-            client_secret=settings.STRAVA_CLIENT_SECRET
-        )
-
-    @staticmethod
-    def create_webhook_subscription(callback_url: str) -> Dict[str, Any]:
-        """
-        Create a webhook subscription with Strava.
-
-        Args:
-            callback_url: URL to receive webhook events
+            user: User object
+            after: Only return activities after this datetime (UTC)
+            limit: Maximum number of activities to return
 
         Returns:
-            Subscription details
+            List of Strava activity objects
         """
-        client = Client()
-        subscription = client.create_subscription(
-            client_id=settings.STRAVA_CLIENT_ID,
-            client_secret=settings.STRAVA_CLIENT_SECRET,
-            callback_url=callback_url,
-            verify_token=settings.STRAVA_WEBHOOK_VERIFY_TOKEN
-        )
-        return subscription
+        client = self.get_authenticated_client(user)
+        if not client:
+            return []
+
+        try:
+            activities = client.get_activities(after=after, limit=limit)
+            # stravalib returns a generator; convert to list so we can iterate multiple times
+            return list(activities)
+        except Exception as e:
+            logger.error(f"Error listing activities for user {user.id}: {e}", exc_info=True)
+            return []
+

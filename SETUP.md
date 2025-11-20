@@ -106,7 +106,6 @@ DATABASE_URL=postgresql://strava_garmin:changeme@db:5432/strava_garmin_sync
 # Strava API (from Step 2)
 STRAVA_CLIENT_ID=your_client_id_here
 STRAVA_CLIENT_SECRET=your_client_secret_here
-STRAVA_WEBHOOK_VERIFY_TOKEN=random_string_here  # Any random string
 
 # Redis (leave as-is for Docker)
 REDIS_URL=redis://redis:6379/0

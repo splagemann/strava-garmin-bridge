@@ -1,32 +1,14 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'sonner';
 
 export default function AuthPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const { authStatus, connectStrava, saveGarminCredentials, isSavingGarmin, hasUserId } = useAuth();
   const [garminEmail, setGarminEmail] = useState('');
   const [garminPassword, setGarminPassword] = useState('');
-
-  // Handle OAuth callback
-  useEffect(() => {
-    const userId = searchParams.get('user_id');
-    const error = searchParams.get('error');
-
-    if (error) {
-      toast.error(`Authentication failed: ${error}`);
-      window.history.replaceState({}, '', '/auth');
-      return;
-    }
-
-    if (userId) {
-      localStorage.setItem('user_id', userId);
-      window.history.replaceState({}, '', '/auth');
-      window.location.reload();
-    }
-  }, [searchParams]);
+  const [isConnectingStrava, setIsConnectingStrava] = useState(false);
 
   // Redirect if fully authenticated
   useEffect(() => {
@@ -34,6 +16,17 @@ export default function AuthPage() {
       navigate('/');
     }
   }, [authStatus, navigate]);
+
+  const handleStravaConnect = async () => {
+    setIsConnectingStrava(true);
+    try {
+      await connectStrava();
+    } catch (error: any) {
+      console.error('Strava connection error:', error);
+      toast.error(error.response?.data?.detail || 'Failed to connect to Strava');
+      setIsConnectingStrava(false);
+    }
+  };
 
   const handleGarminSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,10 +59,11 @@ export default function AuthPage() {
             <h3 className="text-lg font-medium mb-4">1. Connect Strava</h3>
             {!authStatus?.strava_connected ? (
               <button
-                onClick={connectStrava}
-                className="w-full bg-orange-500 hover:bg-orange-600 text-white font-medium py-2 px-4 rounded-md transition-colors"
+                onClick={handleStravaConnect}
+                disabled={isConnectingStrava}
+                className="w-full bg-orange-500 hover:bg-orange-600 text-white font-medium py-2 px-4 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Connect with Strava
+                {isConnectingStrava ? 'Connecting...' : 'Connect with Strava'}
               </button>
             ) : (
               <div className="flex items-center text-green-600">

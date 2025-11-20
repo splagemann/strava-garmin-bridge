@@ -15,7 +15,6 @@ class Settings(BaseSettings):
     # Strava API
     STRAVA_CLIENT_ID: str
     STRAVA_CLIENT_SECRET: str
-    STRAVA_WEBHOOK_VERIFY_TOKEN: str
 
     # Redis/Celery
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -26,7 +25,7 @@ class Settings(BaseSettings):
     # Application
     SECRET_KEY: str
     BASE_URL: str = "http://localhost:8000"
-    FRONTEND_URL: str = "http://localhost:5173"
+    FRONTEND_URL: str = "http://localhost:3000"
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "INFO"
 

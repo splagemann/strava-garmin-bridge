@@ -22,33 +22,53 @@ class GarminCredentials(BaseModel):
     password: str
 
 
-@router.get("/strava/login")
-async def strava_login():
+class StravaAuthRequest(BaseModel):
+    """Request model for Strava authorization code exchange."""
+    code: str
+    scope: str = None
+
+
+@router.get("/strava/auth-url")
+async def get_strava_auth_url():
     """
-    Initiate Strava OAuth flow.
-    Redirects user to Strava authorization page.
+    Get Strava OAuth authorization URL.
+    Frontend will redirect user to this URL to start OAuth flow.
     """
-    redirect_uri = f"{settings.BASE_URL}/api/v1/auth/strava/callback"
-    auth_url, state = StravaService.get_authorization_url(redirect_uri)
+    try:
+        redirect_uri = f"{settings.FRONTEND_URL}/auth/callback"
+        logger.info(f"Generating Strava auth URL with redirect_uri: {redirect_uri}")
 
-    return RedirectResponse(url=auth_url)
+        auth_url, state = StravaService.get_authorization_url(redirect_uri)
+
+        logger.info(f"Generated auth_url: {auth_url}")
+
+        if not auth_url:
+            logger.error("Auth URL is empty or None")
+            raise HTTPException(status_code=500, detail="Failed to generate Strava authorization URL")
+
+        return {
+            "auth_url": auth_url,
+            "state": state
+        }
+    except Exception as e:
+        logger.error(f"Error generating Strava auth URL: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/strava/callback")
-async def strava_callback(
-    code: str = Query(..., description="Authorization code from Strava"),
-    scope: str = Query(None),
+@router.post("/strava/exchange")
+async def exchange_strava_code(
+    auth_request: StravaAuthRequest,
     db: Session = Depends(get_db)
 ):
     """
-    Handle Strava OAuth callback.
-    Exchanges authorization code for access token and saves user data.
+    Exchange Strava authorization code for access token.
+    Called by frontend after receiving callback from Strava.
     """
     try:
         strava_service = StravaService(db)
 
         # Exchange code for token
-        token_response = strava_service.exchange_code_for_token(code)
+        token_response = strava_service.exchange_code_for_token(auth_request.code)
 
         # Log the response structure for debugging
         logger.info(f"Token response keys: {token_response.keys()}")
@@ -81,15 +101,16 @@ async def strava_callback(
         # Save Strava auth with athlete info
         strava_auth = strava_service.save_auth(user, token_response, athlete)
 
-        # Redirect to frontend with user_id
-        frontend_redirect = f"{settings.FRONTEND_URL}/auth?user_id={user.id}"
-        return RedirectResponse(url=frontend_redirect)
+        return {
+            "success": True,
+            "user_id": user.id,
+            "email": user.email,
+            "athlete_id": str(athlete_id)
+        }
 
     except Exception as e:
-        logger.error(f"Error in Strava callback: {e}", exc_info=True)
-        # Redirect to frontend with error
-        error_redirect = f"{settings.FRONTEND_URL}/auth?error={str(e)}"
-        return RedirectResponse(url=error_redirect)
+        logger.error(f"Error exchanging Strava code: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/garmin/credentials")

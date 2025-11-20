@@ -52,10 +52,9 @@ async def health_check():
 
 
 # Import and include routers
-from app.routes import auth, webhook, filters, sync
+from app.routes import auth, filters, sync
 
 app.include_router(auth.router, prefix=f"{settings.API_V1_PREFIX}/auth", tags=["Authentication"])
-app.include_router(webhook.router, prefix="/webhook", tags=["Webhook"])
 app.include_router(filters.router, prefix=f"{settings.API_V1_PREFIX}/filters", tags=["Filters"])
 app.include_router(sync.router, prefix=f"{settings.API_V1_PREFIX}/sync", tags=["Sync"])
 

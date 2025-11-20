@@ -4,7 +4,7 @@ Automatically sync your activities from Strava to Garmin Connect with customizab
 
 ## Features
 
-- 🔄 **Automatic Sync**: Activities created in Strava are automatically synced to Garmin Connect via webhooks
+- 🔄 **Automatic Sync**: Strava activities from the last 7 days are polled every 5 minutes and synced to Garmin based on your filters
 - 🔐 **Secure Authentication**: OAuth2 for Strava, encrypted credential storage for Garmin
 - 🎯 **Smart Filtering**: Include/exclude activities based on title patterns (supports regex)
 - 📊 **Sync History**: Track all sync operations with detailed logs
@@ -14,10 +14,11 @@ Automatically sync your activities from Strava to Garmin Connect with customizab
 
 ## Architecture
 
+- **Frontend**: React + TypeScript + Vite + Tailwind CSS
 - **Backend**: FastAPI (Python)
 - **Database**: PostgreSQL
 - **Task Queue**: Celery + Redis
-- **Strava Integration**: OAuth2 + Webhooks
+- **Strava Integration**: OAuth2 + periodic polling
 - **Garmin Integration**: python-garminconnect library
 
 ## Prerequisites
@@ -43,10 +44,10 @@ cp .env.example .env
 3. **Edit `.env` and configure:**
    - `STRAVA_CLIENT_ID`: Your Strava API client ID
    - `STRAVA_CLIENT_SECRET`: Your Strava API client secret
-   - `STRAVA_WEBHOOK_VERIFY_TOKEN`: Random string for webhook verification
    - `ENCRYPTION_KEY`: Generate with: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
    - `SECRET_KEY`: Random string for session management
-   - `BASE_URL`: Your public URL (for webhooks)
+   - `BASE_URL`: Backend API URL (default: http://localhost:8000)
+   - `FRONTEND_URL`: Frontend URL for OAuth callbacks (default: http://localhost:3000)
 
 4. **Start services**
 ```bash
@@ -57,9 +58,13 @@ docker-compose up -d
 ```bash
 docker-compose ps
 docker-compose logs -f web
+docker-compose logs -f frontend
 ```
 
-The API will be available at http://localhost:8000
+Services will be available at:
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **API Docs**: http://localhost:8000/docs
 
 ## Manual Setup (Without Docker)
 
@@ -95,7 +100,10 @@ uvicorn app.main:app --reload
 # Terminal 2: Celery worker
 celery -A app.celery_app worker --loglevel=info
 
-# Terminal 3: Redis (if not running as service)
+# Terminal 3: Celery beat (scheduled polling every 5 minutes)
+celery -A app.celery_app beat --loglevel=info
+
+# Terminal 4: Redis (if not running as service)
 redis-server
 ```
 
@@ -105,85 +113,47 @@ redis-server
 
 1. Go to https://www.strava.com/settings/api
 2. Create an application
-3. Set "Authorization Callback Domain" to your domain (e.g., `localhost` or `yourdomain.com`)
-4. Copy Client ID and Client Secret to `.env`
+3. Set "Authorization Callback Domain" to match your frontend URL:
+   - For local development: `localhost`
+   - For production: your domain (e.g., `yourdomain.com`)
+4. The callback URL will be: `http://localhost:3000/auth/callback` (or your FRONTEND_URL + `/auth/callback`)
+5. Copy Client ID and Client Secret to `.env`
 
-### Webhook Setup
+### Scheduled Polling
 
-After starting the application:
-
-1. Create webhook subscription:
-```bash
-curl -X POST http://localhost:8000/webhook/subscribe
-```
-
-2. Note: Your `BASE_URL` must be publicly accessible for Strava to send webhook events
+- A Celery beat schedule polls Strava every 5 minutes for activities from the last 7 days
+- Previously synced activities are automatically skipped (no duplicates)
+- Ensures no activities are missed even if the service is temporarily down
+- Ensure `celery -A app.celery_app beat` is running (Docker Compose already includes a `celery-beat` service)
+- Activities are automatically filtered based on your configured patterns before syncing
 
 ## Usage
 
 ### 1. Connect Strava Account
 
-Visit: `http://localhost:8000/api/v1/auth/strava/login`
-
-This will redirect you to Strava for authorization. After approval, you'll receive a user ID.
+1. Open your browser and navigate to: `http://localhost:3000/auth`
+2. Click "Connect with Strava"
+3. Authorize the application on Strava
+4. You'll be redirected back to complete the setup
 
 ### 2. Configure Garmin Credentials
 
-```bash
-curl -X POST "http://localhost:8000/api/v1/auth/garmin/credentials?user_id=YOUR_USER_ID" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "your-garmin-email@example.com",
-    "password": "your-garmin-password"
-  }'
-```
+After connecting Strava, you'll be prompted to add your Garmin credentials on the same page. Enter your Garmin Connect email and password to complete the setup.
 
 ### 3. Set Up Activity Filters (Optional)
 
-**Include only runs and rides:**
-```bash
-curl -X POST "http://localhost:8000/api/v1/filters/?user_id=YOUR_USER_ID" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "filter_type": "include",
-    "pattern": "run|ride",
-    "is_regex": true
-  }'
-```
+Navigate to the Filters page in the web interface to configure which activities should be synced:
 
-**Exclude activities with "test" in the title:**
-```bash
-curl -X POST "http://localhost:8000/api/v1/filters/?user_id=YOUR_USER_ID" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "filter_type": "exclude",
-    "pattern": "test",
-    "is_regex": false
-  }'
-```
+- **Include filters**: Only sync activities that match these patterns
+- **Exclude filters**: Skip activities that match these patterns
+- Supports both simple text matching and regex patterns
+- Filter by activity name or activity type
 
-### 4. Manual Sync
+### 4. Monitor Sync Activity
 
-Manually sync a specific activity:
-```bash
-curl -X POST "http://localhost:8000/api/v1/sync/manual?user_id=YOUR_USER_ID" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "strava_activity_id": 12345678
-  }'
-```
-
-### 5. View Sync History
-
-```bash
-curl "http://localhost:8000/api/v1/sync/history?user_id=YOUR_USER_ID&limit=10"
-```
-
-### 6. Check Sync Statistics
-
-```bash
-curl "http://localhost:8000/api/v1/sync/stats?user_id=YOUR_USER_ID"
-```
+- View the **Dashboard** for sync statistics and recent activity
+- Check **Sync History** to see all past synchronizations and their status
+- Manually trigger syncs for specific activities if needed
 
 ## API Documentation
 
@@ -195,7 +165,7 @@ Interactive API documentation is available at:
 
 ```
 strava-garmin-bridge/
-├── app/
+├── app/                     # Backend (FastAPI)
 │   ├── __init__.py
 │   ├── main.py              # FastAPI application
 │   ├── config.py            # Configuration
@@ -208,7 +178,6 @@ strava-garmin-bridge/
 │   │   └── sync_log.py
 │   ├── routes/              # API routes
 │   │   ├── auth.py
-│   │   ├── webhook.py
 │   │   ├── filters.py
 │   │   └── sync.py
 │   ├── services/            # Business logic
@@ -220,25 +189,33 @@ strava-garmin-bridge/
 │   └── utils/               # Utilities
 │       ├── crypto.py
 │       └── activity_converter.py
+├── frontend/                # Frontend (React + Vite)
+│   ├── src/                 # React source code
+│   ├── public/              # Static assets
+│   ├── Dockerfile           # Frontend Docker image
+│   ├── nginx.conf           # Nginx configuration
+│   ├── package.json         # Node dependencies
+│   └── vite.config.ts       # Vite configuration
 ├── migrations/              # Database migrations
 ├── tests/                   # Tests
 ├── requirements.txt         # Python dependencies
-├── Dockerfile              # Docker image
-├── docker-compose.yml      # Docker services
-├── .env.example            # Environment template
-└── README.md               # This file
+├── Dockerfile               # Backend Docker image
+├── docker-compose.yml       # Docker services
+├── .env.example             # Environment template
+└── README.md                # This file
 ```
 
 ## How It Works
 
-1. **User connects Strava**: OAuth2 flow stores access/refresh tokens
-2. **User adds Garmin credentials**: Credentials are encrypted and stored
-3. **Strava webhook**: When user creates activity, Strava sends webhook event
-4. **Async processing**: Celery task fetches activity data from Strava
-5. **Filter check**: Activity title is checked against user's filter rules
-6. **Conversion**: Activity data is converted to GPX format
-7. **Upload**: GPX file is uploaded to Garmin Connect
-8. **Logging**: Sync result is stored in database
+1. **User connects Strava**: Frontend initiates OAuth2 flow, backend stores access/refresh tokens
+2. **User adds Garmin credentials**: Credentials are encrypted and stored securely
+3. **Scheduled polling**: Celery beat polls Strava every 5 minutes for activities from the last 7 days
+4. **Duplicate check**: Activities already synced are automatically skipped
+5. **Filter check**: Activities are checked against user's filter rules before syncing
+6. **Async processing**: Celery worker fetches activity streams from Strava API
+7. **Conversion**: Activity data is converted to FIT format with proper activity type mapping
+8. **Upload**: FIT file is uploaded to Garmin Connect
+9. **Logging**: Sync result is stored in database with detailed metadata
 
 ## Security Considerations
 
@@ -252,9 +229,10 @@ strava-garmin-bridge/
 
 ### Activities not syncing automatically
 
-1. Check webhook subscription: `curl http://localhost:8000/webhook/subscribe`
-2. Ensure `BASE_URL` is publicly accessible
+1. Verify Celery beat is running: `docker-compose ps celery-beat`
+2. Check Celery beat logs: `docker-compose logs -f celery-beat`
 3. Check Celery worker logs: `docker-compose logs -f celery`
+4. Verify your activity filters aren't excluding activities
 
 ### Garmin login fails
 
@@ -270,6 +248,20 @@ docker-compose exec db psql -U strava_garmin -d strava_garmin_sync
 ```
 
 ## Development
+
+### Frontend Development
+
+To run the frontend in development mode (with hot reload):
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend will be available at http://localhost:5173 and will proxy API requests to http://localhost:8000.
+
+### Backend Development
 
 ### Running tests
 ```bash
@@ -287,8 +279,13 @@ alembic upgrade head
 
 ### Code formatting
 ```bash
+# Backend
 black app/
 isort app/
+
+# Frontend
+cd frontend
+npm run lint
 ```
 
 ## Contributing
