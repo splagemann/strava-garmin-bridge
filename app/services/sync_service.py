@@ -55,6 +55,9 @@ class SyncService:
         if not filters:
             return True
 
+        # Determine if we have include filters (affects default behavior)
+        has_include_filters = any(f.filter_type == "include" for f in filters)
+
         # Check each filter
         for filter_rule in filters:
             pattern = filter_rule.pattern
@@ -86,8 +89,10 @@ class SyncService:
                 elif filter_rule.filter_type == "exclude":
                     return False
 
-        # Default behavior: sync if no exclude filters matched
-        return True
+        # Default behavior depends on filter types:
+        # - If we have include filters and nothing matched, don't sync
+        # - If we only have exclude filters and nothing matched, sync
+        return not has_include_filters
 
     def sync_activity(self, strava_activity_id: int) -> Dict[str, Any]:
         """
@@ -126,8 +131,8 @@ class SyncService:
 
             # Store activity metadata
             sync_log.activity_name = activity.name
-            # Convert activity type to string (stravalib 2.x uses RelaxedActivityType)
-            activity_type_str = str(activity.type) if activity.type else None
+            # Extract activity type (stravalib 2.x uses Pydantic RootModel with root='Value' format)
+            activity_type_str = self.converter.extract_activity_type(activity.type) if activity.type else None
             sync_log.activity_type = activity_type_str
 
             # Store debug data - convert Strava activity to dict for JSON storage
@@ -136,8 +141,8 @@ class SyncService:
                 # Safely extract each field
                 if hasattr(activity, 'id'): strava_dict["id"] = int(activity.id) if activity.id else None
                 if hasattr(activity, 'name'): strava_dict["name"] = str(activity.name) if activity.name else None
-                if hasattr(activity, 'type'): strava_dict["type"] = str(activity.type) if activity.type else None
-                if hasattr(activity, 'sport_type'): strava_dict["sport_type"] = str(activity.sport_type) if activity.sport_type else None
+                if hasattr(activity, 'type'): strava_dict["type"] = self.converter.extract_activity_type(activity.type) if activity.type else None
+                if hasattr(activity, 'sport_type'): strava_dict["sport_type"] = self.converter.extract_activity_type(activity.sport_type) if activity.sport_type else None
                 if hasattr(activity, 'distance'):
                     try:
                         strava_dict["distance"] = float(activity.distance) if activity.distance else None
@@ -196,17 +201,30 @@ class SyncService:
                 self._update_sync_log(sync_log, "failed", result["message"])
                 return result
 
-            # 4. Convert to GPX format
-            logger.info(f"Converting activity to GPX format")
-            gpx_data = self.converter.strava_to_gpx(activity, streams)
+            # 4. Convert to FIT format
+            logger.info(f"Converting activity to FIT format")
+            fit_data = self.converter.strava_to_fit(activity, streams)
 
-            # Store GPX data for debugging
-            sync_log.gpx_data = gpx_data
+            # Store FIT data summary for debugging (not the full binary data)
+            if isinstance(fit_data, bytes):
+                num_points = len(streams.get("latlng").data) if "latlng" in streams and streams.get("latlng") else 0
+                fit_summary = {
+                    "format": "FIT",
+                    "size_bytes": len(fit_data),
+                    "num_gps_points": num_points,
+                    "activity_type": activity_type_str,
+                    "sport": str(self.converter.map_activity_type_to_fit(activity_type_str)[0]).split('.')[-1],
+                    "duration_seconds": float(activity.moving_time) if hasattr(activity, 'moving_time') and activity.moving_time else None,
+                    "distance_meters": float(activity.distance) if hasattr(activity, 'distance') and activity.distance else None,
+                }
+                sync_log.gpx_data = str(fit_summary)
+            else:
+                sync_log.gpx_data = str(fit_data)
             self.db.commit()
 
             # 5. Save to temporary file
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.gpx', delete=False) as temp_file:
-                temp_file.write(gpx_data)
+            with tempfile.NamedTemporaryFile(mode='wb', suffix='.fit', delete=False) as temp_file:
+                temp_file.write(fit_data)
                 temp_file_path = temp_file.name
 
             try:
@@ -219,7 +237,7 @@ class SyncService:
 
                 # 7. Upload to Garmin
                 logger.info(f"Uploading activity to Garmin Connect")
-                upload_response = self.garmin_service.upload_activity(temp_file_path, ".gpx")
+                upload_response = self.garmin_service.upload_activity(temp_file_path, ".fit")
 
                 if not upload_response:
                     result["message"] = "Failed to upload activity to Garmin"

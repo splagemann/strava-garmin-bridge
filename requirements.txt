@@ -27,6 +27,7 @@ cryptography==41.0.7
 # Activity File Handling
 fitparse==1.2.0
 gpxpy==1.6.2
+fit-tool==0.9.13
 
 # HTTP Client
 httpx==0.25.2

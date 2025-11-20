@@ -218,14 +218,53 @@ export default function SyncHistoryPage() {
                   </div>
                 )}
 
-                {/* GPX Data */}
+                {/* FIT Data Summary */}
                 {selectedLogDetails.gpx_data && (
                   <div>
-                    <h3 className="text-lg font-semibold mb-2">GPX Data Sent to Garmin</h3>
+                    <h3 className="text-lg font-semibold mb-2">FIT File Sent to Garmin</h3>
                     <div className="bg-gray-50 p-4 rounded">
-                      <pre className="text-xs overflow-x-auto whitespace-pre-wrap max-h-96">
-                        {selectedLogDetails.gpx_data}
-                      </pre>
+                      {(() => {
+                        try {
+                          // Try to parse as Python dict string (e.g., "{'format': 'FIT', ...}")
+                          const cleaned = selectedLogDetails.gpx_data
+                            .replace(/'/g, '"')  // Replace single quotes with double quotes
+                            .replace(/None/g, 'null')  // Replace None with null
+                            .replace(/True/g, 'true')  // Replace True with true
+                            .replace(/False/g, 'false');  // Replace False with false
+                          const fitData = JSON.parse(cleaned);
+
+                          return (
+                            <div className="space-y-2">
+                              <div><strong>Format:</strong> {fitData.format}</div>
+                              <div><strong>File Size:</strong> {(fitData.size_bytes / 1024).toFixed(2)} KB</div>
+                              <div><strong>GPS Points:</strong> {fitData.num_gps_points?.toLocaleString()}</div>
+                              <div><strong>Activity Type:</strong> {fitData.activity_type}</div>
+                              <div><strong>Sport:</strong> {fitData.sport}</div>
+                              {fitData.duration_seconds && (
+                                <div><strong>Duration:</strong> {Math.floor(fitData.duration_seconds / 60)} minutes {Math.floor(fitData.duration_seconds % 60)} seconds</div>
+                              )}
+                              {fitData.distance_meters && (
+                                <div><strong>Distance:</strong> {(fitData.distance_meters / 1000).toFixed(2)} km</div>
+                              )}
+                            </div>
+                          );
+                        } catch (e) {
+                          // If parsing fails, show as plain text (legacy data or hex)
+                          const isHex = /^[0-9a-f]+$/i.test(selectedLogDetails.gpx_data);
+                          if (isHex && selectedLogDetails.gpx_data.length > 1000) {
+                            return (
+                              <div className="text-sm text-gray-600">
+                                FIT file (binary data): {(selectedLogDetails.gpx_data.length / 2 / 1024).toFixed(2)} KB
+                              </div>
+                            );
+                          }
+                          return (
+                            <pre className="text-xs overflow-x-auto whitespace-pre-wrap max-h-96">
+                              {selectedLogDetails.gpx_data}
+                            </pre>
+                          );
+                        }
+                      })()}
                     </div>
                   </div>
                 )}
