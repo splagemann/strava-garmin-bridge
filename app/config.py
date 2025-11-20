@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     # Application
     SECRET_KEY: str
     BASE_URL: str = "http://localhost:8000"
+    FRONTEND_URL: str = "http://localhost:5173"
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "INFO"
 

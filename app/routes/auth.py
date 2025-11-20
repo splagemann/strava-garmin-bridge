@@ -81,15 +81,15 @@ async def strava_callback(
         # Save Strava auth with athlete info
         strava_auth = strava_service.save_auth(user, token_response, athlete)
 
-        return {
-            "message": "Successfully connected to Strava",
-            "user_id": user.id,
-            "athlete_id": strava_auth.athlete_id
-        }
+        # Redirect to frontend with user_id
+        frontend_redirect = f"{settings.FRONTEND_URL}/auth?user_id={user.id}"
+        return RedirectResponse(url=frontend_redirect)
 
     except Exception as e:
         logger.error(f"Error in Strava callback: {e}", exc_info=True)
-        raise HTTPException(status_code=400, detail=str(e))
+        # Redirect to frontend with error
+        error_redirect = f"{settings.FRONTEND_URL}/auth?error={str(e)}"
+        return RedirectResponse(url=error_redirect)
 
 
 @router.post("/garmin/credentials")

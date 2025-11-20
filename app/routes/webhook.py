@@ -30,8 +30,9 @@ async def verify_webhook(
         logger.error("Invalid verify token")
         raise HTTPException(status_code=403, detail="Invalid verify token")
 
-    # Return the challenge
-    return {"hub.challenge": hub_challenge}
+    # Return the challenge as plain JSON (Strava expects this format)
+    from fastapi.responses import JSONResponse
+    return JSONResponse(content={"hub.challenge": hub_challenge})
 
 
 @router.post("/strava")
@@ -94,6 +95,34 @@ async def handle_webhook(
         logger.error(f"Error processing webhook: {e}", exc_info=True)
         # Return 200 to prevent Strava from retrying
         return {"status": "error", "message": str(e)}
+
+
+@router.get("/subscriptions")
+async def list_subscriptions():
+    """
+    List all webhook subscriptions.
+    """
+    try:
+        from app.services.strava_service import StravaService
+        subscriptions = StravaService.list_webhook_subscriptions()
+        return {"subscriptions": subscriptions}
+    except Exception as e:
+        logger.error(f"Error listing subscriptions: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/subscriptions/{subscription_id}")
+async def delete_subscription(subscription_id: int):
+    """
+    Delete a webhook subscription.
+    """
+    try:
+        from app.services.strava_service import StravaService
+        StravaService.delete_webhook_subscription(subscription_id)
+        return {"message": "Subscription deleted successfully"}
+    except Exception as e:
+        logger.error(f"Error deleting subscription: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/subscribe")

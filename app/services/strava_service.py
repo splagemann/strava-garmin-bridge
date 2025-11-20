@@ -206,6 +206,36 @@ class StravaService:
             return None
 
     @staticmethod
+    def list_webhook_subscriptions() -> Dict[str, Any]:
+        """
+        List all webhook subscriptions for this application.
+
+        Returns:
+            List of subscription details
+        """
+        client = Client()
+        subscriptions = client.list_subscriptions(
+            client_id=settings.STRAVA_CLIENT_ID,
+            client_secret=settings.STRAVA_CLIENT_SECRET
+        )
+        return subscriptions
+
+    @staticmethod
+    def delete_webhook_subscription(subscription_id: int) -> None:
+        """
+        Delete a webhook subscription.
+
+        Args:
+            subscription_id: ID of the subscription to delete
+        """
+        client = Client()
+        client.delete_subscription(
+            subscription_id=subscription_id,
+            client_id=settings.STRAVA_CLIENT_ID,
+            client_secret=settings.STRAVA_CLIENT_SECRET
+        )
+
+    @staticmethod
     def create_webhook_subscription(callback_url: str) -> Dict[str, Any]:
         """
         Create a webhook subscription with Strava.

@@ -44,6 +44,7 @@ services:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - SECRET_KEY=${SECRET_KEY}
       - BASE_URL=${BASE_URL:-http://localhost:8000}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:5173}
       - ENVIRONMENT=development
       - LOG_LEVEL=INFO
     depends_on:
@@ -67,6 +68,7 @@ services:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - SECRET_KEY=${SECRET_KEY}
       - BASE_URL=${BASE_URL:-http://localhost:8000}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:5173}
       - ENVIRONMENT=development
       - LOG_LEVEL=INFO
     depends_on:
