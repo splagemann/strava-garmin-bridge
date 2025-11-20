@@ -64,6 +64,7 @@ async def manual_sync(
         return result
 
     except Exception as e:
+        db.rollback()
         logger.error(f"Error during manual sync: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -153,6 +154,7 @@ async def retry_sync(
         return result
 
     except Exception as e:
+        db.rollback()
         logger.error(f"Error during retry: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -202,22 +204,31 @@ async def delete_sync_log(
     """
     Delete a specific sync log entry.
     """
-    # Get sync log with user authorization
-    sync_log = db.query(SyncLog).filter(
-        SyncLog.id == sync_log_id,
-        SyncLog.user_id == user_id
-    ).first()
+    try:
+        # Get sync log with user authorization
+        sync_log = db.query(SyncLog).filter(
+            SyncLog.id == sync_log_id,
+            SyncLog.user_id == user_id
+        ).first()
 
-    if not sync_log:
-        raise HTTPException(status_code=404, detail="Sync log not found")
+        if not sync_log:
+            raise HTTPException(status_code=404, detail="Sync log not found")
 
-    # Delete the sync log
-    db.delete(sync_log)
-    db.commit()
+        # Delete the sync log
+        db.delete(sync_log)
+        db.commit()
 
-    logger.info(f"Deleted sync log {sync_log_id} for user {user_id}")
+        logger.info(f"Deleted sync log {sync_log_id} for user {user_id}")
 
-    return {"message": "Sync log deleted successfully", "deleted_id": sync_log_id}
+        return {"message": "Sync log deleted successfully", "deleted_id": sync_log_id}
+
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting sync log {sync_log_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to delete sync log: {str(e)}")
 
 
 @router.delete("/history")
@@ -236,45 +247,54 @@ async def bulk_delete_sync_logs(
     - DELETE /history?user_id=1&before_date=2024-01-01T00:00:00  (delete logs before date)
     - DELETE /history?user_id=1  (delete all logs for user)
     """
-    # Verify user exists
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    try:
+        # Verify user exists
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
 
-    # Build query
-    query = db.query(SyncLog).filter(SyncLog.user_id == user_id)
+        # Build query
+        query = db.query(SyncLog).filter(SyncLog.user_id == user_id)
 
-    # Apply filters
-    if status:
-        if status not in ["success", "failed", "skipped", "pending"]:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid status. Must be: success, failed, skipped, or pending"
-            )
-        query = query.filter(SyncLog.status == status)
+        # Apply filters
+        if status:
+            if status not in ["success", "failed", "skipped", "pending"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid status. Must be: success, failed, skipped, or pending"
+                )
+            query = query.filter(SyncLog.status == status)
 
-    if before_date:
-        query = query.filter(SyncLog.created_at < before_date)
+        if before_date:
+            query = query.filter(SyncLog.created_at < before_date)
 
-    if strava_activity_id:
-        query = query.filter(SyncLog.strava_activity_id == strava_activity_id)
+        if strava_activity_id:
+            query = query.filter(SyncLog.strava_activity_id == strava_activity_id)
 
-    # Count before deletion
-    count = query.count()
+        # Count before deletion
+        count = query.count()
 
-    if count == 0:
+        if count == 0:
+            return {
+                "message": "No sync logs found matching the criteria",
+                "deleted_count": 0
+            }
+
+        # Delete matching logs
+        query.delete(synchronize_session=False)
+        db.commit()
+
+        logger.info(f"Bulk deleted {count} sync logs for user {user_id} (status={status}, before_date={before_date}, strava_activity_id={strava_activity_id})")
+
         return {
-            "message": "No sync logs found matching the criteria",
-            "deleted_count": 0
+            "message": f"Successfully deleted {count} sync log(s)",
+            "deleted_count": count
         }
 
-    # Delete matching logs
-    query.delete(synchronize_session=False)
-    db.commit()
-
-    logger.info(f"Bulk deleted {count} sync logs for user {user_id} (status={status}, before_date={before_date}, strava_activity_id={strava_activity_id})")
-
-    return {
-        "message": f"Successfully deleted {count} sync log(s)",
-        "deleted_count": count
-    }
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error during bulk delete: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to bulk delete sync logs: {str(e)}")

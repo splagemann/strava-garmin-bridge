@@ -208,7 +208,18 @@ class SyncService:
             error_msg = f"Error syncing activity: {str(e)}"
             logger.error(error_msg, exc_info=True)
             result["message"] = error_msg
-            self._update_sync_log(sync_log, "failed", error_msg)
+
+            # Rollback any failed transaction before attempting to update sync log
+            try:
+                self.db.rollback()
+            except Exception as rollback_error:
+                logger.error(f"Error during rollback: {rollback_error}")
+
+            # Now update the sync log with the error
+            try:
+                self._update_sync_log(sync_log, "failed", error_msg)
+            except Exception as update_error:
+                logger.error(f"Error updating sync log: {update_error}")
 
         return result
 

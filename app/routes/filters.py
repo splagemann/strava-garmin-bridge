@@ -71,42 +71,50 @@ async def create_filter(
     """
     Create a new activity filter.
     """
-    # Validate filter type
-    if filter_data.filter_type not in ["include", "exclude"]:
-        raise HTTPException(
-            status_code=400,
-            detail="filter_type must be 'include' or 'exclude'"
+    try:
+        # Validate filter type
+        if filter_data.filter_type not in ["include", "exclude"]:
+            raise HTTPException(
+                status_code=400,
+                detail="filter_type must be 'include' or 'exclude'"
+            )
+
+        # Validate filter field
+        if filter_data.filter_field not in ["name", "type"]:
+            raise HTTPException(
+                status_code=400,
+                detail="filter_field must be 'name' or 'type'"
+            )
+
+        # Check user exists
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Create filter
+        activity_filter = ActivityFilter(
+            user_id=user_id,
+            filter_type=filter_data.filter_type,
+            filter_field=filter_data.filter_field,
+            pattern=filter_data.pattern,
+            is_regex=filter_data.is_regex,
+            active=filter_data.active
         )
 
-    # Validate filter field
-    if filter_data.filter_field not in ["name", "type"]:
-        raise HTTPException(
-            status_code=400,
-            detail="filter_field must be 'name' or 'type'"
-        )
+        db.add(activity_filter)
+        db.commit()
+        db.refresh(activity_filter)
 
-    # Check user exists
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        logger.info(f"Created filter {activity_filter.id} for user {user_id}")
 
-    # Create filter
-    activity_filter = ActivityFilter(
-        user_id=user_id,
-        filter_type=filter_data.filter_type,
-        filter_field=filter_data.filter_field,
-        pattern=filter_data.pattern,
-        is_regex=filter_data.is_regex,
-        active=filter_data.active
-    )
+        return activity_filter
 
-    db.add(activity_filter)
-    db.commit()
-    db.refresh(activity_filter)
-
-    logger.info(f"Created filter {activity_filter.id} for user {user_id}")
-
-    return activity_filter
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating filter: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to create filter: {str(e)}")
 
 
 @router.get("/{filter_id}", response_model=FilterResponse)
@@ -139,46 +147,54 @@ async def update_filter(
     """
     Update an existing filter.
     """
-    activity_filter = db.query(ActivityFilter).filter(
-        ActivityFilter.id == filter_id,
-        ActivityFilter.user_id == user_id
-    ).first()
+    try:
+        activity_filter = db.query(ActivityFilter).filter(
+            ActivityFilter.id == filter_id,
+            ActivityFilter.user_id == user_id
+        ).first()
 
-    if not activity_filter:
-        raise HTTPException(status_code=404, detail="Filter not found")
+        if not activity_filter:
+            raise HTTPException(status_code=404, detail="Filter not found")
 
-    # Update fields
-    if filter_data.filter_type is not None:
-        if filter_data.filter_type not in ["include", "exclude"]:
-            raise HTTPException(
-                status_code=400,
-                detail="filter_type must be 'include' or 'exclude'"
-            )
-        activity_filter.filter_type = filter_data.filter_type
+        # Update fields
+        if filter_data.filter_type is not None:
+            if filter_data.filter_type not in ["include", "exclude"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail="filter_type must be 'include' or 'exclude'"
+                )
+            activity_filter.filter_type = filter_data.filter_type
 
-    if filter_data.filter_field is not None:
-        if filter_data.filter_field not in ["name", "type"]:
-            raise HTTPException(
-                status_code=400,
-                detail="filter_field must be 'name' or 'type'"
-            )
-        activity_filter.filter_field = filter_data.filter_field
+        if filter_data.filter_field is not None:
+            if filter_data.filter_field not in ["name", "type"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail="filter_field must be 'name' or 'type'"
+                )
+            activity_filter.filter_field = filter_data.filter_field
 
-    if filter_data.pattern is not None:
-        activity_filter.pattern = filter_data.pattern
+        if filter_data.pattern is not None:
+            activity_filter.pattern = filter_data.pattern
 
-    if filter_data.is_regex is not None:
-        activity_filter.is_regex = filter_data.is_regex
+        if filter_data.is_regex is not None:
+            activity_filter.is_regex = filter_data.is_regex
 
-    if filter_data.active is not None:
-        activity_filter.active = filter_data.active
+        if filter_data.active is not None:
+            activity_filter.active = filter_data.active
 
-    db.commit()
-    db.refresh(activity_filter)
+        db.commit()
+        db.refresh(activity_filter)
 
-    logger.info(f"Updated filter {filter_id} for user {user_id}")
+        logger.info(f"Updated filter {filter_id} for user {user_id}")
 
-    return activity_filter
+        return activity_filter
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating filter {filter_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to update filter: {str(e)}")
 
 
 @router.delete("/{filter_id}")
@@ -190,17 +206,25 @@ async def delete_filter(
     """
     Delete a filter.
     """
-    activity_filter = db.query(ActivityFilter).filter(
-        ActivityFilter.id == filter_id,
-        ActivityFilter.user_id == user_id
-    ).first()
+    try:
+        activity_filter = db.query(ActivityFilter).filter(
+            ActivityFilter.id == filter_id,
+            ActivityFilter.user_id == user_id
+        ).first()
 
-    if not activity_filter:
-        raise HTTPException(status_code=404, detail="Filter not found")
+        if not activity_filter:
+            raise HTTPException(status_code=404, detail="Filter not found")
 
-    db.delete(activity_filter)
-    db.commit()
+        db.delete(activity_filter)
+        db.commit()
 
-    logger.info(f"Deleted filter {filter_id} for user {user_id}")
+        logger.info(f"Deleted filter {filter_id} for user {user_id}")
 
-    return {"message": "Filter deleted successfully"}
+        return {"message": "Filter deleted successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting filter {filter_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to delete filter: {str(e)}")
