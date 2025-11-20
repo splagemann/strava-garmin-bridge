@@ -69,9 +69,15 @@ ENCRYPTION_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Ferne
 SECRET_KEY=$(openssl rand -hex 32)
 
 # Your domain URLs
+# BASE_URL is used by both backend (for OAuth redirects) and frontend (for API calls)
 BASE_URL=https://api.yourdomain.com
 FRONTEND_URL=https://yourdomain.com
 ```
+
+**Important Notes:**
+- The `BASE_URL` is automatically passed to the frontend container as `BACKEND_API_URL` at runtime
+- Frontend Docker image supports runtime configuration - no rebuild needed for different environments
+- The same Docker image can be deployed to dev/staging/production with different `BASE_URL` values
 
 ### 4. Configure Strava Application
 
