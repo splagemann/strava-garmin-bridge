@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// Support runtime configuration via window.ENV (for Docker production)
+// Falls back to build-time Vite env var (for development), then localhost
+const API_BASE_URL = (window as any).ENV?.BACKEND_API_URL || import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
