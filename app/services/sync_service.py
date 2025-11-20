@@ -132,25 +132,50 @@ class SyncService:
 
             # Store debug data - convert Strava activity to dict for JSON storage
             try:
-                strava_dict = {
-                    "id": activity.id,
-                    "name": activity.name,
-                    "type": str(activity.type) if activity.type else None,
-                    "sport_type": str(activity.sport_type) if hasattr(activity, 'sport_type') and activity.sport_type else None,
-                    "distance": float(activity.distance) if activity.distance else None,
-                    "moving_time": int(activity.moving_time.total_seconds()) if activity.moving_time else None,
-                    "elapsed_time": int(activity.elapsed_time.total_seconds()) if activity.elapsed_time else None,
-                    "total_elevation_gain": float(activity.total_elevation_gain) if activity.total_elevation_gain else None,
-                    "start_date": activity.start_date.isoformat() if activity.start_date else None,
-                    "average_speed": float(activity.average_speed) if activity.average_speed else None,
-                    "max_speed": float(activity.max_speed) if activity.max_speed else None,
-                    "average_heartrate": float(activity.average_heartrate) if activity.average_heartrate else None,
-                    "max_heartrate": float(activity.max_heartrate) if activity.max_heartrate else None,
-                    "has_gps": bool(activity.has_heartrate) if hasattr(activity, 'has_heartrate') else None,
-                }
+                strava_dict = {}
+                # Safely extract each field
+                if hasattr(activity, 'id'): strava_dict["id"] = int(activity.id) if activity.id else None
+                if hasattr(activity, 'name'): strava_dict["name"] = str(activity.name) if activity.name else None
+                if hasattr(activity, 'type'): strava_dict["type"] = str(activity.type) if activity.type else None
+                if hasattr(activity, 'sport_type'): strava_dict["sport_type"] = str(activity.sport_type) if activity.sport_type else None
+                if hasattr(activity, 'distance'):
+                    try:
+                        strava_dict["distance"] = float(activity.distance) if activity.distance else None
+                    except: pass
+                if hasattr(activity, 'moving_time'):
+                    try:
+                        strava_dict["moving_time"] = int(activity.moving_time.total_seconds()) if activity.moving_time else None
+                    except: pass
+                if hasattr(activity, 'elapsed_time'):
+                    try:
+                        strava_dict["elapsed_time"] = int(activity.elapsed_time.total_seconds()) if activity.elapsed_time else None
+                    except: pass
+                if hasattr(activity, 'total_elevation_gain'):
+                    try:
+                        strava_dict["total_elevation_gain"] = float(activity.total_elevation_gain) if activity.total_elevation_gain else None
+                    except: pass
+                if hasattr(activity, 'start_date'):
+                    try:
+                        strava_dict["start_date"] = activity.start_date.isoformat() if activity.start_date else None
+                    except: pass
+                if hasattr(activity, 'average_speed'):
+                    try:
+                        strava_dict["average_speed"] = float(activity.average_speed) if activity.average_speed else None
+                    except: pass
+                if hasattr(activity, 'max_speed'):
+                    try:
+                        strava_dict["max_speed"] = float(activity.max_speed) if activity.max_speed else None
+                    except: pass
+
+                # Store all available attributes for debugging
+                strava_dict["_all_attributes"] = [attr for attr in dir(activity) if not attr.startswith('_')]
+
                 sync_log.strava_data = strava_dict
+                logger.info(f"Stored Strava data with {len(strava_dict)} fields")
             except Exception as e:
-                logger.warning(f"Failed to serialize Strava activity data: {e}")
+                logger.error(f"Failed to serialize Strava activity data: {e}", exc_info=True)
+                # Store at least the error
+                sync_log.strava_data = {"error": str(e), "type": str(type(activity))}
 
             self.db.commit()
 
