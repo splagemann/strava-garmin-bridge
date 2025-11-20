@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useSync } from '../hooks/useSync';
+import { syncApi } from '../api';
 import { toast } from 'sonner';
 import { formatDate } from '../lib/utils';
 import { SYNC_STATUS_COLORS, SYNC_STATUS_LABELS } from '../lib/constants';
@@ -8,6 +9,8 @@ export default function SyncHistoryPage() {
   const { syncHistory, retrySync, deleteSyncLog, bulkDeleteSyncLogs, isRetrying, isDeleting } = useSync();
   const [showBulkDelete, setShowBulkDelete] = useState(false);
   const [bulkDeleteStatus, setBulkDeleteStatus] = useState<string>('');
+  const [selectedLogDetails, setSelectedLogDetails] = useState<any>(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
 
   const handleRetry = async (id: number) => {
     try {
@@ -48,6 +51,18 @@ export default function SyncHistoryPage() {
       } catch (error: any) {
         toast.error(error.response?.data?.detail || 'Failed to delete sync logs');
       }
+    }
+  };
+
+  const handleViewDetails = async (id: number) => {
+    setLoadingDetails(true);
+    try {
+      const details = await syncApi.getSyncLogDetails(id);
+      setSelectedLogDetails(details);
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'Failed to load details');
+    } finally {
+      setLoadingDetails(false);
     }
   };
 
@@ -126,7 +141,14 @@ export default function SyncHistoryPage() {
                   </span>
                 </div>
                 <div className="text-sm text-gray-600">{formatDate(log.created_at)}</div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-col">
+                  <button
+                    onClick={() => handleViewDetails(log.id)}
+                    disabled={loadingDetails}
+                    className="text-sm text-blue-600 hover:text-blue-800 font-medium disabled:opacity-50"
+                  >
+                    Details
+                  </button>
                   {log.status === 'failed' && (
                     <button
                       onClick={() => handleRetry(log.id)}
@@ -154,6 +176,82 @@ export default function SyncHistoryPage() {
           )}
         </div>
       </div>
+
+      {/* Details Modal */}
+      {selectedLogDetails && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b flex justify-between items-center">
+              <h2 className="text-xl font-bold">Sync Details</h2>
+              <button
+                onClick={() => setSelectedLogDetails(null)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="px-6 py-4 overflow-y-auto flex-1">
+              <div className="space-y-6">
+                {/* Basic Info */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-2">Basic Information</h3>
+                  <div className="bg-gray-50 p-4 rounded space-y-2">
+                    <div><strong>Activity Name:</strong> {selectedLogDetails.activity_name || 'N/A'}</div>
+                    <div><strong>Activity Type:</strong> {selectedLogDetails.activity_type || 'N/A'}</div>
+                    <div><strong>Strava ID:</strong> {selectedLogDetails.strava_activity_id}</div>
+                    <div><strong>Garmin ID:</strong> {selectedLogDetails.garmin_activity_id || 'N/A'}</div>
+                    <div><strong>Status:</strong> {selectedLogDetails.status}</div>
+                  </div>
+                </div>
+
+                {/* Strava Data */}
+                {selectedLogDetails.strava_data && (
+                  <div>
+                    <h3 className="text-lg font-semibold mb-2">Strava Activity Data</h3>
+                    <div className="bg-gray-50 p-4 rounded">
+                      <pre className="text-xs overflow-x-auto whitespace-pre-wrap">
+                        {JSON.stringify(selectedLogDetails.strava_data, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                )}
+
+                {/* GPX Data */}
+                {selectedLogDetails.gpx_data && (
+                  <div>
+                    <h3 className="text-lg font-semibold mb-2">GPX Data Sent to Garmin</h3>
+                    <div className="bg-gray-50 p-4 rounded">
+                      <pre className="text-xs overflow-x-auto whitespace-pre-wrap max-h-96">
+                        {selectedLogDetails.gpx_data}
+                      </pre>
+                    </div>
+                  </div>
+                )}
+
+                {/* Error Message */}
+                {selectedLogDetails.error_message && (
+                  <div>
+                    <h3 className="text-lg font-semibold mb-2 text-red-600">Error Message</h3>
+                    <div className="bg-red-50 p-4 rounded text-red-800">
+                      {selectedLogDetails.error_message}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t flex justify-end">
+              <button
+                onClick={() => setSelectedLogDetails(null)}
+                className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-md font-medium"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

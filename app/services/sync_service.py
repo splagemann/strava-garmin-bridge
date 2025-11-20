@@ -129,6 +129,29 @@ class SyncService:
             # Convert activity type to string (stravalib 2.x uses RelaxedActivityType)
             activity_type_str = str(activity.type) if activity.type else None
             sync_log.activity_type = activity_type_str
+
+            # Store debug data - convert Strava activity to dict for JSON storage
+            try:
+                strava_dict = {
+                    "id": activity.id,
+                    "name": activity.name,
+                    "type": str(activity.type) if activity.type else None,
+                    "sport_type": str(activity.sport_type) if hasattr(activity, 'sport_type') and activity.sport_type else None,
+                    "distance": float(activity.distance) if activity.distance else None,
+                    "moving_time": int(activity.moving_time.total_seconds()) if activity.moving_time else None,
+                    "elapsed_time": int(activity.elapsed_time.total_seconds()) if activity.elapsed_time else None,
+                    "total_elevation_gain": float(activity.total_elevation_gain) if activity.total_elevation_gain else None,
+                    "start_date": activity.start_date.isoformat() if activity.start_date else None,
+                    "average_speed": float(activity.average_speed) if activity.average_speed else None,
+                    "max_speed": float(activity.max_speed) if activity.max_speed else None,
+                    "average_heartrate": float(activity.average_heartrate) if activity.average_heartrate else None,
+                    "max_heartrate": float(activity.max_heartrate) if activity.max_heartrate else None,
+                    "has_gps": bool(activity.has_heartrate) if hasattr(activity, 'has_heartrate') else None,
+                }
+                sync_log.strava_data = strava_dict
+            except Exception as e:
+                logger.warning(f"Failed to serialize Strava activity data: {e}")
+
             self.db.commit()
 
             # 2. Check if activity should be synced based on filters
@@ -151,6 +174,10 @@ class SyncService:
             # 4. Convert to GPX format
             logger.info(f"Converting activity to GPX format")
             gpx_data = self.converter.strava_to_gpx(activity, streams)
+
+            # Store GPX data for debugging
+            sync_log.gpx_data = gpx_data
+            self.db.commit()
 
             # 5. Save to temporary file
             with tempfile.NamedTemporaryFile(mode='w', suffix='.gpx', delete=False) as temp_file:

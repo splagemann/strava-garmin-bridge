@@ -35,6 +35,23 @@ class SyncLogResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SyncLogDetailResponse(BaseModel):
+    """Response model for sync log with debug data."""
+    id: int
+    strava_activity_id: str
+    garmin_activity_id: Optional[str]
+    status: str
+    error_message: Optional[str]
+    activity_name: Optional[str]
+    activity_type: Optional[str]
+    strava_data: Optional[dict]
+    gpx_data: Optional[str]
+    created_at: datetime
+    completed_at: Optional[datetime]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 @router.post("/manual")
 async def manual_sync(
     sync_request: SyncRequest,
@@ -108,6 +125,26 @@ async def get_sync_log(
 ):
     """
     Get details of a specific sync log.
+    """
+    sync_log = db.query(SyncLog).filter(
+        SyncLog.id == sync_log_id,
+        SyncLog.user_id == user_id
+    ).first()
+
+    if not sync_log:
+        raise HTTPException(status_code=404, detail="Sync log not found")
+
+    return sync_log
+
+
+@router.get("/history/{sync_log_id}/details", response_model=SyncLogDetailResponse)
+async def get_sync_log_details(
+    sync_log_id: int,
+    user_id: int = Query(..., description="User ID"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get detailed sync log including Strava data and GPX data for debugging.
     """
     sync_log = db.query(SyncLog).filter(
         SyncLog.id == sync_log_id,

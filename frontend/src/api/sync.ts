@@ -65,4 +65,24 @@ export const syncApi = {
     const response = await apiClient.delete('/api/v1/sync/history', { params });
     return response.data;
   },
+
+  /**
+   * Get sync log details including debug data
+   */
+  getSyncLogDetails: async (syncLogId: number): Promise<{
+    id: number;
+    strava_activity_id: string;
+    garmin_activity_id: string | null;
+    status: string;
+    error_message: string | null;
+    activity_name: string | null;
+    activity_type: string | null;
+    strava_data: any | null;
+    gpx_data: string | null;
+    created_at: string;
+    completed_at: string | null;
+  }> => {
+    const response = await apiClient.get(`/api/v1/sync/history/${syncLogId}/details`);
+    return response.data;
+  },
 };

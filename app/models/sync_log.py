@@ -1,7 +1,7 @@
 """
 Sync log model for tracking activity sync operations.
 """
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Text
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Text, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base
@@ -26,6 +26,10 @@ class SyncLog(Base):
     # Activity metadata (for reference)
     activity_name = Column(String, nullable=True)
     activity_type = Column(String, nullable=True)
+
+    # Debug data (for troubleshooting)
+    strava_data = Column(JSON, nullable=True)  # Raw Strava activity object
+    gpx_data = Column(Text, nullable=True)  # GPX data sent to Garmin
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
