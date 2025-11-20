@@ -34,6 +34,22 @@ export function useSync() {
     },
   });
 
+  const deleteSyncMutation = useMutation({
+    mutationFn: syncApi.deleteSyncLog,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.syncHistory() });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.syncStats });
+    },
+  });
+
+  const bulkDeleteSyncMutation = useMutation({
+    mutationFn: syncApi.bulkDeleteSyncLogs,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.syncHistory() });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.syncStats });
+    },
+  });
+
   return {
     syncHistory: syncHistory || [],
     syncStats,
@@ -41,7 +57,12 @@ export function useSync() {
     isLoadingStats,
     manualSync: (data: ManualSyncRequest) => manualSyncMutation.mutateAsync(data),
     retrySync: (id: number) => retrySyncMutation.mutateAsync(id),
+    deleteSyncLog: (id: number) => deleteSyncMutation.mutateAsync(id),
+    bulkDeleteSyncLogs: (params?: Parameters<typeof syncApi.bulkDeleteSyncLogs>[0]) =>
+      bulkDeleteSyncMutation.mutateAsync(params),
     isSyncing: manualSyncMutation.isPending,
     isRetrying: retrySyncMutation.isPending,
+    isDeleting: deleteSyncMutation.isPending,
+    isBulkDeleting: bulkDeleteSyncMutation.isPending,
   };
 }

@@ -7,6 +7,7 @@ export default function FiltersPage() {
   const { filters, createFilter, deleteFilter, updateFilter, isCreating } = useFilters();
   const [showForm, setShowForm] = useState(false);
   const [filterType, setFilterType] = useState<'include' | 'exclude'>('include');
+  const [filterField, setFilterField] = useState<'name' | 'type'>('name');
   const [pattern, setPattern] = useState('');
   const [isRegex, setIsRegex] = useState(false);
 
@@ -15,12 +16,14 @@ export default function FiltersPage() {
     try {
       await createFilter({
         filter_type: filterType,
+        filter_field: filterField,
         pattern,
         is_regex: isRegex,
         active: true,
       });
       toast.success('Filter created successfully!');
       setPattern('');
+      setFilterField('name');
       setShowForm(false);
     } catch (error) {
       toast.error('Failed to create filter');
@@ -75,13 +78,29 @@ export default function FiltersPage() {
               </select>
             </div>
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Filter Field</label>
+              <select
+                value={filterField}
+                onChange={(e) => setFilterField(e.target.value as 'name' | 'type')}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              >
+                <option value="name">Activity Name</option>
+                <option value="type">Activity Type</option>
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                {filterField === 'name'
+                  ? 'Match against activity titles (e.g., "Morning Run")'
+                  : 'Match against activity types (e.g., "EBikeRide", "Run", "Ride")'}
+              </p>
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Pattern</label>
               <input
                 type="text"
                 value={pattern}
                 onChange={(e) => setPattern(e.target.value)}
                 required
-                placeholder="e.g., Morning Run"
+                placeholder={filterField === 'name' ? 'e.g., Morning Run' : 'e.g., EBikeRide'}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md"
               />
             </div>
@@ -113,6 +132,9 @@ export default function FiltersPage() {
               <div className="flex items-center gap-3">
                 <span className={`px-3 py-1 rounded-full text-xs font-medium border ${FILTER_TYPE_COLORS[filter.filter_type]}`}>
                   {filter.filter_type}
+                </span>
+                <span className="px-2 py-1 bg-blue-50 text-blue-700 text-xs font-medium rounded">
+                  {filter.filter_field === 'name' ? 'Name' : 'Type'}
                 </span>
                 <span className="font-medium">{filter.pattern}</span>
                 {filter.is_regex && <span className="text-xs text-gray-500">(regex)</span>}
