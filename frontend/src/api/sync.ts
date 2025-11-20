@@ -45,4 +45,24 @@ export const syncApi = {
     const response = await apiClient.get('/api/v1/sync/stats');
     return response.data;
   },
+
+  /**
+   * Delete a specific sync log
+   */
+  deleteSyncLog: async (syncLogId: number): Promise<{ message: string; deleted_id: number }> => {
+    const response = await apiClient.delete(`/api/v1/sync/history/${syncLogId}`);
+    return response.data;
+  },
+
+  /**
+   * Bulk delete sync logs with optional filters
+   */
+  bulkDeleteSyncLogs: async (params?: {
+    status?: 'success' | 'failed' | 'skipped' | 'pending';
+    before_date?: string;
+    strava_activity_id?: string;
+  }): Promise<{ message: string; deleted_count: number }> => {
+    const response = await apiClient.delete('/api/v1/sync/history', { params });
+    return response.data;
+  },
 };
