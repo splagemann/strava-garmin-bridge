@@ -331,6 +331,7 @@ Pre-commit hooks will validate your commit messages automatically.
 ### Documentation
 
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment guide
+- **[CONFIGURATION.md](CONFIGURATION.md)** - Environment variables and configuration guide
 - **[UPGRADE.md](UPGRADE.md)** - Upgrade and rollback instructions
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Full contributing guidelines
 - **[PRE_COMMIT_SETUP.md](PRE_COMMIT_SETUP.md)** - Pre-commit hooks setup and usage
