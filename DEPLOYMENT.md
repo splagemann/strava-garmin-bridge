@@ -6,6 +6,7 @@ This guide covers deploying the Strava-Garmin Sync Bridge to production using pr
 
 - Docker 20.10+ and Docker Compose 2.0+
 - A server with at least 2GB RAM and 10GB disk space
+- Linux server (amd64/x86_64 architecture)
 - Domain name (optional but recommended)
 - SSL certificate (recommended for production)
 

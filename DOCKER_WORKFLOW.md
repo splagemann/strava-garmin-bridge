@@ -91,9 +91,17 @@ However, if you want to change the **default fallback** URL that's baked into th
 
 Default behavior: Runtime `BACKEND_API_URL` → Build-time `VITE_API_URL` → `http://localhost:8000`
 
-### 3. Enable Multi-Architecture Builds (Optional)
+### 3. Multi-Architecture Builds (Optional)
 
-The workflow builds for both `linux/amd64` and `linux/arm64` by default. If you only need one architecture, remove the unwanted platform from the `platforms` line in `.github/workflows/docker-publish.yml`.
+The workflow builds for `linux/amd64` by default.
+
+To enable multi-architecture builds (e.g., for ARM devices like Raspberry Pi), update the `platforms` line in `.github/workflows/docker-publish.yml`:
+
+```yaml
+platforms: linux/amd64,linux/arm64
+```
+
+**Note:** Multi-arch builds significantly increase build time (3-5x longer) due to QEMU emulation.
 
 ## Usage
 
