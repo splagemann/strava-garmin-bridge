@@ -143,8 +143,6 @@ services:
       ENVIRONMENT: production
     networks:
       - strava-garmin-network
-    volumes:
-      - celery_beat_data:/app
 
   frontend:
     image: ghcr.io/${GITHUB_REPO:-splagemann/strava-garmin-bridge}/frontend:${IMAGE_TAG:-latest}
@@ -169,8 +167,6 @@ volumes:
   postgres_data:
     driver: local
   redis_data:
-    driver: local
-  celery_beat_data:
     driver: local
 
 networks:
