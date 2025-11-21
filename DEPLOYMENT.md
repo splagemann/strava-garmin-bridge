@@ -100,12 +100,21 @@ docker-compose -f docker-compose.prod.yml logs -f
 docker-compose -f docker-compose.prod.yml ps
 ```
 
-### 6. Run Database Migrations
+### 6. Verify Services
 
 ```bash
-# Run migrations on first deployment
-docker-compose -f docker-compose.prod.yml exec backend alembic upgrade head
+# Check service status
+docker-compose -f docker-compose.prod.yml ps
+
+# View backend logs (migrations run automatically on startup)
+docker-compose -f docker-compose.prod.yml logs backend
+
+# You should see:
+# "PostgreSQL is up - running database migrations..."
+# "Migrations completed successfully!"
 ```
+
+**Note:** Database migrations now run automatically when the backend container starts, so you don't need to run them manually.
 
 ### 7. Access Application
 

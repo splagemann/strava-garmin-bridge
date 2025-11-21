@@ -55,8 +55,9 @@ docker-compose -f docker-compose.prod.yml up -d --no-deps --build celery-worker
 docker-compose -f docker-compose.prod.yml up -d --no-deps --build celery-beat
 docker-compose -f docker-compose.prod.yml up -d --no-deps --build frontend
 
-# Run migrations if needed
-docker-compose -f docker-compose.prod.yml exec backend alembic upgrade head
+# Migrations run automatically on container startup
+# Verify they completed successfully
+docker-compose -f docker-compose.prod.yml logs backend | grep -E "migration|alembic"
 
 # Verify services are healthy
 docker-compose -f docker-compose.prod.yml ps
