@@ -78,7 +78,8 @@ services:
   # Celery Beat (for scheduled tasks)
   celery-beat:
     build: .
-    command: sh -c "rm -f /app/celerybeat-schedule* && celery -A app.celery_app beat --loglevel=info"
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["rm -f /app/celerybeat-schedule* && /docker-entrypoint.sh celery -A app.celery_app beat --loglevel=info"]
     volumes:
       - .:/app
     environment:
