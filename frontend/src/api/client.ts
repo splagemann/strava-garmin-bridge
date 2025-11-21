@@ -12,14 +12,11 @@ export const apiClient = axios.create({
   },
 });
 
-// Add user_id to all requests
+// Add JWT Bearer token to all requests
 apiClient.interceptors.request.use((config) => {
-  const userId = localStorage.getItem('user_id');
-  if (userId) {
-    if (!config.params) {
-      config.params = {};
-    }
-    config.params.user_id = userId;
+  const token = localStorage.getItem('auth_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
@@ -29,10 +26,51 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Clear user_id and redirect to auth
-      localStorage.removeItem('user_id');
+      // Clear token and redirect to auth
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user_email');
+      localStorage.removeItem('athlete_id');
       window.location.href = '/auth';
     }
     return Promise.reject(error);
   }
 );
+
+/**
+ * Check if JWT token is expired
+ */
+export function isTokenExpired(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.exp * 1000 < Date.now();
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Get current auth token
+ */
+export function getAuthToken(): string | null {
+  const token = localStorage.getItem('auth_token');
+  if (!token) {
+    return null;
+  }
+
+  // Check if token is expired
+  if (isTokenExpired(token)) {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user_email');
+    localStorage.removeItem('athlete_id');
+    return null;
+  }
+
+  return token;
+}
+
+/**
+ * Check if user is authenticated
+ */
+export function isAuthenticated(): boolean {
+  return getAuthToken() !== null;
+}

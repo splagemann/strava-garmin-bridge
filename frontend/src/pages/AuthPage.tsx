@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 
 export default function AuthPage() {
   const navigate = useNavigate();
-  const { authStatus, connectStrava, saveGarminCredentials, isSavingGarmin, hasUserId } = useAuth();
+  const { authStatus, connectStrava, saveGarminCredentials, isSavingGarmin, hasAuthToken } = useAuth();
   const [garminEmail, setGarminEmail] = useState('');
   const [garminPassword, setGarminPassword] = useState('');
   const [isConnectingStrava, setIsConnectingStrava] = useState(false);
@@ -80,7 +80,7 @@ export default function AuthPage() {
           </div>
 
           {/* Garmin Connection */}
-          {hasUserId && (
+          {hasAuthToken && (
             <div className="border rounded-lg p-6 bg-white shadow-sm">
               <h3 className="text-lg font-medium mb-4">2. Add Garmin Credentials</h3>
               {!authStatus?.garmin_connected ? (

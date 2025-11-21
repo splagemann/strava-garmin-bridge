@@ -75,7 +75,7 @@ services:
       redis:
         condition: service_healthy
 
-  # Celery Beat (optional - for scheduled tasks)
+  # Celery Beat (for scheduled tasks)
   celery-beat:
     build: .
     command: celery -A app.celery_app beat --loglevel=info
@@ -84,10 +84,19 @@ services:
     environment:
       - DATABASE_URL=postgresql://strava_garmin:changeme@db:5432/strava_garmin_sync
       - REDIS_URL=redis://redis:6379/0
+      - STRAVA_CLIENT_ID=${STRAVA_CLIENT_ID}
+      - STRAVA_CLIENT_SECRET=${STRAVA_CLIENT_SECRET}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+      - BASE_URL=${BASE_URL:-http://localhost:8000}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - ENVIRONMENT=development
+      - LOG_LEVEL=INFO
     depends_on:
-      - redis
-      - db
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   # Frontend (React + Vite)
   frontend:

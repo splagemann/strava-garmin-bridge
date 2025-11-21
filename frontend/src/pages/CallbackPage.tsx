@@ -11,7 +11,7 @@ export default function CallbackPage() {
   useEffect(() => {
     const handleCallback = async () => {
       const code = searchParams.get('code');
-      const scope = searchParams.get('scope');
+      const state = searchParams.get('state');
       const error = searchParams.get('error');
 
       // Handle Strava OAuth error
@@ -22,7 +22,7 @@ export default function CallbackPage() {
         return;
       }
 
-      // Handle missing code
+      // Handle missing code or state
       if (!code) {
         toast.error('No authorization code received from Strava');
         setStatus('error');
@@ -30,24 +30,25 @@ export default function CallbackPage() {
         return;
       }
 
-      // Exchange code for user data
+      if (!state) {
+        toast.error('No state parameter received. Possible security issue.');
+        setStatus('error');
+        setTimeout(() => navigate('/auth'), 2000);
+        return;
+      }
+
+      // Exchange code for JWT token with CSRF protection
       try {
-        const response = await authApi.exchangeStravaCode(code, scope || undefined);
+        await authApi.handleOAuthCallback(code, state);
 
-        if (response.success && response.user_id) {
-          // Store user ID in localStorage
-          localStorage.setItem('user_id', response.user_id.toString());
+        toast.success('Successfully connected to Strava!');
 
-          toast.success('Successfully connected to Strava!');
-
-          // Redirect to auth page to complete setup
-          navigate('/auth');
-        } else {
-          throw new Error('Invalid response from server');
-        }
+        // Redirect to auth page to complete setup
+        navigate('/auth');
       } catch (error: any) {
         console.error('Error exchanging Strava code:', error);
-        toast.error(error.response?.data?.detail || 'Failed to connect to Strava');
+        const errorMessage = error.response?.data?.detail || error.message || 'Failed to connect to Strava';
+        toast.error(errorMessage);
         setStatus('error');
         setTimeout(() => navigate('/auth'), 2000);
       }

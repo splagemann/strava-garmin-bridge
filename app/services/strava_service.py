@@ -28,21 +28,31 @@ class StravaService:
     @staticmethod
     def get_authorization_url(redirect_uri: str) -> tuple[str, str]:
         """
-        Get Strava OAuth authorization URL.
+        Get Strava OAuth authorization URL with CSRF state token.
 
         Args:
             redirect_uri: OAuth callback URL
 
         Returns:
-            Tuple of (authorization_url, state)
+            Tuple of (authorization_url, signed_state_token)
         """
+        from app.utils.jwt import generate_state_token, create_state_token
+
+        # Generate cryptographically secure random state
+        state = generate_state_token()
+
+        # Create signed JWT token containing the state
+        signed_state = create_state_token(state)
+
         client = Client()
+        # Pass the random state to Strava OAuth
         url = client.authorization_url(
             client_id=settings.STRAVA_CLIENT_ID,
             redirect_uri=redirect_uri,
-            scope=["read", "activity:read", "activity:read_all"]
+            scope=["read", "activity:read", "activity:read_all"],
+            state=state  # CSRF protection
         )
-        return url, ""
+        return url, signed_state
 
     def exchange_code_for_token(self, code: str) -> Dict[str, Any]:
         """

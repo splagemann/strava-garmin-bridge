@@ -1,16 +1,17 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { authApi } from '../api';
+import { isAuthenticated as checkIsAuthenticated } from '../api/client';
 import { QUERY_KEYS } from '../lib/constants';
 import type { GarminCredentials } from '../types';
 
 export function useAuth() {
   const queryClient = useQueryClient();
-  const userId = localStorage.getItem('user_id');
+  const hasAuthToken = checkIsAuthenticated();
 
   const { data: authStatus, isLoading, error } = useQuery({
     queryKey: QUERY_KEYS.authStatus,
     queryFn: authApi.getAuthStatus,
-    enabled: !!userId,
+    enabled: hasAuthToken,
     retry: 1,
   });
 
@@ -35,9 +36,7 @@ export function useAuth() {
   };
 
   const logout = () => {
-    localStorage.removeItem('user_id');
-    queryClient.clear();
-    window.location.href = '/auth';
+    authApi.logout();
   };
 
   return {
@@ -45,7 +44,7 @@ export function useAuth() {
     isLoading,
     error,
     isAuthenticated: !!(authStatus?.strava_connected && authStatus?.garmin_connected),
-    hasUserId: !!userId,
+    hasAuthToken,
     connectStrava,
     saveGarminCredentials,
     logout,

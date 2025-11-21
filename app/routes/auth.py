@@ -9,6 +9,8 @@ from app.database import get_db
 from app.models import User
 from app.services.strava_service import StravaService
 from app.services.garmin_service import GarminService
+from app.middleware.auth import get_current_user
+from app.utils.jwt import create_access_token, verify_state_token
 from app.config import settings
 import logging
 
@@ -25,6 +27,8 @@ class GarminCredentials(BaseModel):
 class StravaAuthRequest(BaseModel):
     """Request model for Strava authorization code exchange."""
     code: str
+    state: str  # State returned from Strava OAuth
+    signed_state: str  # Signed state token from initial auth request
     scope: str = None
 
 
@@ -61,10 +65,19 @@ async def exchange_strava_code(
     db: Session = Depends(get_db)
 ):
     """
-    Exchange Strava authorization code for access token.
+    Exchange Strava authorization code for access token with CSRF protection.
     Called by frontend after receiving callback from Strava.
+    Returns JWT token for authenticated API access.
     """
     try:
+        # CSRF Protection: Verify state token
+        if not verify_state_token(auth_request.signed_state, auth_request.state):
+            logger.warning("State token verification failed - possible CSRF attack")
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid state token. Please restart the authentication process."
+            )
+
         strava_service = StravaService(db)
 
         # Exchange code for token
@@ -101,13 +114,18 @@ async def exchange_strava_code(
         # Save Strava auth with athlete info
         strava_auth = strava_service.save_auth(user, token_response, athlete)
 
+        # Create JWT token for the user
+        access_token = create_access_token(data={"sub": str(user.id)})
+
         return {
-            "success": True,
-            "user_id": user.id,
+            "access_token": access_token,
+            "token_type": "bearer",
             "email": user.email,
             "athlete_id": str(athlete_id)
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error exchanging Strava code: {e}", exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
@@ -116,32 +134,31 @@ async def exchange_strava_code(
 @router.post("/garmin/credentials")
 async def save_garmin_credentials(
     credentials: GarminCredentials,
-    user_id: int = Query(..., description="User ID"),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    Save Garmin Connect credentials for a user.
+    Save Garmin Connect credentials for authenticated user.
     Credentials are encrypted before storage and verified before saving.
+
+    Requires: Bearer token authentication
 
     Note: Credentials must be valid. If you have 2FA/MFA enabled on Garmin,
     you may need to use an app-specific password or ensure you complete
     the authentication flow properly.
     """
-    # Get user
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    user = current_user
 
     # Initialize Garmin service
     garmin_service = GarminService(db)
 
     # Verify credentials first
-    logger.info(f"Verifying Garmin credentials for user {user_id}")
+    logger.info(f"Verifying Garmin credentials for user {user.id}")
     is_valid, error_message = garmin_service.verify_credentials(credentials.email, credentials.password)
 
     if not is_valid:
         detail = f"Invalid Garmin credentials: {error_message}" if error_message else "Invalid Garmin credentials"
-        logger.error(f"Failed to verify Garmin credentials for user {user_id}: {detail}")
+        logger.error(f"Failed to verify Garmin credentials for user {user.id}: {detail}")
 
         # Provide helpful message if it's likely 2FA
         if "AssertionError" in detail or "2FA" in detail or "MFA" in detail:
@@ -149,7 +166,7 @@ async def save_garmin_credentials(
 
         raise HTTPException(status_code=401, detail=detail)
 
-    logger.info(f"Garmin credentials verified successfully for user {user_id}")
+    logger.info(f"Garmin credentials verified successfully for user {user.id}")
 
     # Save credentials
     try:
@@ -160,8 +177,7 @@ async def save_garmin_credentials(
         )
 
         return {
-            "message": "Garmin credentials verified and saved successfully",
-            "user_id": user.id
+            "message": "Garmin credentials verified and saved successfully"
         }
 
     except Exception as e:
@@ -171,20 +187,16 @@ async def save_garmin_credentials(
 
 @router.get("/status")
 async def auth_status(
-    user_id: int = Query(..., description="User ID"),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(get_current_user)
 ):
     """
-    Check authentication status for both Strava and Garmin.
-    """
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    Check authentication status for both Strava and Garmin for the authenticated user.
 
+    Requires: Bearer token authentication
+    """
     return {
-        "user_id": user.id,
-        "email": user.email,
-        "strava_connected": user.strava_auth is not None,
-        "garmin_connected": user.garmin_auth is not None,
-        "strava_athlete_id": user.strava_auth.athlete_id if user.strava_auth else None
+        "email": current_user.email,
+        "strava_connected": current_user.strava_auth is not None,
+        "garmin_connected": current_user.garmin_auth is not None,
+        "strava_athlete_id": current_user.strava_auth.athlete_id if current_user.strava_auth else None
     }

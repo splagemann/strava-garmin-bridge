@@ -25,13 +25,28 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configure CORS
+# Configure CORS - restrict to specific origins for security
+# allow_origins=["*"] with allow_credentials=True is insecure and invalid
+allowed_origins = [
+    settings.FRONTEND_URL,  # Frontend URL from settings
+]
+
+# Allow development origins if in dev mode
+if settings.ENVIRONMENT == "development":
+    allowed_origins.extend([
+        "http://localhost:3000",
+        "http://localhost:5173",  # Vite default port
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+    ])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=allowed_origins,  # Specific origins only
+    allow_credentials=True,  # Allow cookies/auth headers
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Explicit methods
+    allow_headers=["Content-Type", "Authorization"],  # Explicit headers
+    max_age=600,  # Cache preflight requests for 10 minutes
 )
 
 
