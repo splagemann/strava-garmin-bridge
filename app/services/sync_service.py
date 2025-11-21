@@ -94,12 +94,14 @@ class SyncService:
         # - If we only have exclude filters and nothing matched, sync
         return not has_include_filters
 
-    def sync_activity(self, strava_activity_id: int) -> Dict[str, Any]:
+    def sync_activity(self, strava_activity_id: int, force_sync: bool = False) -> Dict[str, Any]:
         """
         Sync a single activity from Strava to Garmin.
 
         Args:
             strava_activity_id: Strava activity ID
+            force_sync: If True, sync even if activity was already synced (for manual/retry).
+                       Note: This direction doesn't check for duplicates by default.
 
         Returns:
             Dictionary with sync result

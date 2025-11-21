@@ -182,8 +182,8 @@ class GarminService:
         Get recent activities from Garmin Connect.
 
         Args:
-            start_date: Start date in format YYYY-MM-DD
-            limit: Maximum number of activities to fetch
+            start_date: Start date in format YYYY-MM-DD (activities from this date forward)
+            limit: Maximum number of activities to fetch (note: garminconnect may not respect this limit)
 
         Returns:
             List of activities or None if error
@@ -193,24 +193,66 @@ class GarminService:
             return None
 
         try:
-            from datetime import datetime, timedelta
-
-            # Calculate end_date as today
-            end_date = datetime.now().strftime("%Y-%m-%d")
-
-            # Use Garmin's built-in date filtering
+            # Use get_activities_by_date to fetch activities from start_date to today
+            logger.info(f"Fetching Garmin activities from {start_date} onwards")
             activities = self.client.get_activities_by_date(
                 startdate=start_date,
-                enddate=end_date
+                enddate=None  # None means up to today
             )
 
-            # Limit the results if we got more than requested
-            if activities and len(activities) > limit:
-                activities = activities[:limit]
+            if activities:
+                logger.info(f"Fetched {len(activities)} activities from {start_date}")
+                # Garmin returns in descending order by default, which is what we want (newest first)
+                return activities
+            else:
+                logger.info(f"No activities found from {start_date}")
+                return []
 
-            return activities
         except Exception as e:
-            logger.error(f"Error fetching Garmin activities: {e}")
+            logger.error(f"Error fetching Garmin activities from {start_date}: {e}", exc_info=True)
+            return None
+
+    def get_activity_by_id(self, activity_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific activity by ID from Garmin Connect.
+
+        Args:
+            activity_id: Garmin activity ID
+
+        Returns:
+            Activity details dict or None if error
+        """
+        if not self.client:
+            logger.error("Garmin client not connected")
+            return None
+
+        try:
+            # Try get_activity first (basic activity data)
+            try:
+                logger.info(f"Fetching activity {activity_id} using get_activity()")
+                activity = self.client.get_activity(activity_id)
+                if activity:
+                    logger.info(f"Successfully fetched activity {activity_id}: {activity.get('activityName', 'Unknown')}")
+                    return activity
+            except Exception as e:
+                logger.warning(f"get_activity() failed for {activity_id}: {e}")
+
+            # Fallback: Try get_activity_details (more comprehensive data)
+            try:
+                logger.info(f"Fetching activity {activity_id} using get_activity_details()")
+                activity = self.client.get_activity_details(activity_id)
+                if activity:
+                    logger.info(f"Successfully fetched activity details {activity_id}: {activity.get('activityName', 'Unknown')}")
+                    return activity
+            except Exception as e:
+                logger.warning(f"get_activity_details() failed for {activity_id}: {e}")
+
+            # If both methods fail, log error
+            logger.error(f"Could not fetch activity {activity_id} using any method")
+            return None
+
+        except Exception as e:
+            logger.error(f"Error fetching Garmin activity {activity_id}: {e}", exc_info=True)
             return None
 
     def download_activity_original(self, activity_id: str, output_path: str) -> Optional[str]:

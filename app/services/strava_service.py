@@ -303,11 +303,21 @@ class StravaService:
             try:
                 activity = uploader.wait(timeout=60, poll_interval=2)
 
-                if activity and hasattr(activity, 'id'):
+                # Check if the returned object is an ActivityUploader (error/timeout case)
+                # or a DetailedActivity (success case)
+                if hasattr(activity, 'id') and not hasattr(activity, 'upload_id'):
+                    # This is a DetailedActivity with an id attribute
                     logger.info(f"Upload successful! Activity ID: {activity.id}")
                     return {
                         "success": True,
                         "activity_id": str(activity.id)
+                    }
+                elif hasattr(uploader, 'activity_id') and uploader.activity_id:
+                    # Sometimes the uploader object has the activity_id even if wait() didn't return it
+                    logger.info(f"Upload successful! Activity ID: {uploader.activity_id}")
+                    return {
+                        "success": True,
+                        "activity_id": str(uploader.activity_id)
                     }
                 else:
                     logger.error("Upload completed but no activity ID returned")
@@ -318,7 +328,7 @@ class StravaService:
 
             except Exception as wait_error:
                 # Check if uploader has error information
-                if uploader.is_error:
+                if hasattr(uploader, 'is_error') and uploader.is_error:
                     error_msg = f"Upload failed during processing: {wait_error}"
                     logger.error(error_msg)
                     return {

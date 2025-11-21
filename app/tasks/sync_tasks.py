@@ -230,11 +230,49 @@ def poll_garmin_activities_task(
                 logger.info(f"User {user.id}: no Garmin activities found")
                 continue
 
-            logger.info(f"User {user.id}: fetched {len(activities)} Garmin activities")
+            logger.info(f"User {user.id}: fetched {len(activities)} Garmin activities from last {lookback_days} days")
 
             for activity in activities:
                 garmin_id = str(activity.get("activityId"))
                 if not garmin_id:
+                    continue
+
+                # Double-check activity date as a safety measure
+                # (Garmin API should already filter, but we verify here)
+                # Try different date fields that Garmin might provide
+                activity_date_str = (
+                    activity.get("startTimeGMT") or
+                    activity.get("startTimeLocal") or
+                    activity.get("beginTimestamp")
+                )
+                if not activity_date_str:
+                    # If no date field found, skip the activity to be safe
+                    logger.warning(f"Skipping Garmin activity {garmin_id} - no date field found (tried startTimeGMT, startTimeLocal, beginTimestamp)")
+                    continue
+
+                try:
+                    # Parse datetime string from Garmin (handles multiple formats)
+                    if 'T' in activity_date_str or 'Z' in activity_date_str:
+                        # ISO format with timezone: '2025-11-21T14:21:56Z'
+                        activity_date = datetime.fromisoformat(activity_date_str.replace('Z', '+00:00'))
+                    else:
+                        # Simple format without timezone: '2025-11-21 14:21:56'
+                        # Assume UTC since Garmin stores times in UTC
+                        activity_date = datetime.strptime(activity_date_str, '%Y-%m-%d %H:%M:%S')
+                        activity_date = activity_date.replace(tzinfo=timezone.utc)
+
+                    # Calculate age in days for logging
+                    age_days = (datetime.now(timezone.utc) - activity_date).days
+
+                    # Safety check: skip if somehow older than lookback window
+                    if activity_date < lookback_start:
+                        logger.warning(f"Skipping old Garmin activity {garmin_id} from {activity_date_str} ({age_days} days old, limit is {lookback_days} days) - should have been filtered by API")
+                        continue
+
+                    logger.debug(f"Processing Garmin activity {garmin_id} ({age_days} days old)")
+                except (ValueError, TypeError) as e:
+                    # If date parsing fails, skip the activity to be safe
+                    logger.warning(f"Skipping Garmin activity {garmin_id} - could not parse date '{activity_date_str}': {e}")
                     continue
 
                 # Skip if we've already synced this activity (either direction)
@@ -256,7 +294,8 @@ def poll_garmin_activities_task(
                     continue
 
                 logger.info(f"Queueing Garmin→Strava sync for user {user.id} activity {garmin_id} '{activity_name}'")
-                sync_service.sync_activity(garmin_id)
+                # Pass the activity data to avoid redundant API call
+                sync_service.sync_activity(garmin_id, activity_data=activity)
 
         except Exception as e:
             logger.error(f"Error polling Garmin for user {user.id}: {e}", exc_info=True)

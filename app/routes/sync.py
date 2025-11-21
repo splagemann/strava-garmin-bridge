@@ -75,6 +75,7 @@ async def manual_sync(
 ):
     """
     Manually trigger sync for a specific Strava activity (Strava → Garmin).
+    Always syncs even if activity was already synced before.
 
     Requires: Bearer token authentication
     """
@@ -90,7 +91,10 @@ async def manual_sync(
     # Perform sync
     try:
         sync_service = SyncService(db, user)
-        result = sync_service.sync_activity(sync_request.strava_activity_id)
+        result = sync_service.sync_activity(
+            sync_request.strava_activity_id,
+            force_sync=True  # Always sync for manual requests
+        )
 
         return result
 
@@ -108,6 +112,8 @@ async def manual_sync_garmin_to_strava(
 ):
     """
     Manually trigger sync for a specific Garmin activity (Garmin → Strava).
+    Always syncs even if activity was already synced before.
+    Supports activities from the last 90 days.
 
     Requires: Bearer token authentication
     """
@@ -123,7 +129,11 @@ async def manual_sync_garmin_to_strava(
     # Perform sync
     try:
         sync_service = GarminToStravaSyncService(db, user)
-        result = sync_service.sync_activity(sync_request.garmin_activity_id)
+        result = sync_service.sync_activity(
+            sync_request.garmin_activity_id,
+            force_sync=True,      # Always sync for manual requests
+            skip_date_filter=True  # Support old activities up to 90 days
+        )
 
         return result
 
@@ -223,7 +233,7 @@ async def retry_sync(
     db: Session = Depends(get_db)
 ):
     """
-    Retry a failed sync for the authenticated user.
+    Retry a failed sync for the authenticated user (supports both directions).
 
     Requires: Bearer token authentication
     """
@@ -239,10 +249,23 @@ async def retry_sync(
     if sync_log.status == "success":
         raise HTTPException(status_code=400, detail="Cannot retry successful sync")
 
-    # Retry sync
+    # Retry sync based on direction
     try:
-        sync_service = SyncService(db, current_user)
-        result = sync_service.sync_activity(int(sync_log.strava_activity_id))
+        if sync_log.sync_direction == "garmin_to_strava":
+            # Garmin → Strava retry
+            sync_service = GarminToStravaSyncService(db, current_user)
+            result = sync_service.sync_activity(
+                sync_log.source_activity_id,
+                force_sync=True,
+                skip_date_filter=True  # Allow retry of old activities
+            )
+        else:
+            # Strava → Garmin retry (default/legacy)
+            sync_service = SyncService(db, current_user)
+            result = sync_service.sync_activity(
+                int(sync_log.strava_activity_id),
+                force_sync=True
+            )
 
         return result
 

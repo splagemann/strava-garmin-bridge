@@ -70,9 +70,11 @@ async def exchange_strava_code(
     Returns JWT token for authenticated API access.
     """
     try:
+        logger.info(f"Strava exchange request - state: {auth_request.state[:20]}..., signed_state: {auth_request.signed_state[:20] if auth_request.signed_state else 'None'}...")
+
         # CSRF Protection: Verify state token
         if not verify_state_token(auth_request.signed_state, auth_request.state):
-            logger.warning("State token verification failed - possible CSRF attack")
+            logger.warning(f"State token verification failed - state: {auth_request.state}, signed_state: {auth_request.signed_state[:50] if auth_request.signed_state else 'None'}")
             raise HTTPException(
                 status_code=400,
                 detail="Invalid state token. Please restart the authentication process."

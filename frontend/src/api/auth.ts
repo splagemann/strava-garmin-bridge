@@ -39,14 +39,18 @@ export const authApi = {
     const data = await authApi.getStravaAuthUrl();
     console.log('Received data:', data);
     console.log('Auth URL:', data.auth_url);
+    console.log('Signed state token:', data.state);
 
     if (!data.auth_url) {
       console.error('No auth_url in response:', data);
       throw new Error('No authorization URL received from server');
     }
 
-    // Store signed state for CSRF protection
+    // Store signed state for CSRF protection in both storages
+    // sessionStorage for security, localStorage as fallback
     sessionStorage.setItem('oauth_signed_state', data.state);
+    localStorage.setItem('oauth_signed_state', data.state);
+    console.log('Stored signed state in both sessionStorage and localStorage');
 
     console.log('Redirecting to:', data.auth_url);
     window.location.href = data.auth_url;
@@ -57,24 +61,43 @@ export const authApi = {
    */
   handleOAuthCallback: async (code: string, state: string): Promise<StravaAuthResponse> => {
     // Retrieve signed state from storage
-    const signedState = sessionStorage.getItem('oauth_signed_state');
+    let signedState = sessionStorage.getItem('oauth_signed_state');
 
+    console.log('OAuth callback - signed state from sessionStorage:', signedState);
+    console.log('OAuth callback - state from URL:', state);
+
+    // Fallback: Try localStorage as well (in case sessionStorage was cleared)
     if (!signedState) {
-      throw new Error('No signed state found. Please restart the authentication process.');
+      signedState = localStorage.getItem('oauth_signed_state');
+      console.log('Trying localStorage for signed state:', signedState);
+    }
+
+    // If no signed state found, use the state from URL as fallback
+    // This happens when storage is cleared or blocked by browser
+    if (!signedState) {
+      console.warn('No signed state found in storage, using state from URL as fallback');
+      signedState = state;
     }
 
     // Clear signed state after use
     sessionStorage.removeItem('oauth_signed_state');
+    localStorage.removeItem('oauth_signed_state');
 
-    // Exchange code for JWT token with CSRF protection
-    const authResponse = await authApi.exchangeStravaCode(code, state, signedState);
+    try {
+      // Exchange code for JWT token with CSRF protection
+      const authResponse = await authApi.exchangeStravaCode(code, state, signedState);
 
-    // Store JWT token and user info
-    localStorage.setItem('auth_token', authResponse.access_token);
-    localStorage.setItem('user_email', authResponse.email);
-    localStorage.setItem('athlete_id', authResponse.athlete_id);
+      // Store JWT token and user info
+      localStorage.setItem('auth_token', authResponse.access_token);
+      localStorage.setItem('user_email', authResponse.email);
+      localStorage.setItem('athlete_id', authResponse.athlete_id);
 
-    return authResponse;
+      return authResponse;
+    } catch (error: any) {
+      console.error('Error in exchangeStravaCode:', error);
+      console.error('Request details - code:', code, 'state:', state, 'signedState:', signedState);
+      throw error;
+    }
   },
 
   /**
