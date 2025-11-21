@@ -6,7 +6,9 @@ from app.celery_app import celery_app
 from app.database import SessionLocal
 from app.models import User, SyncLog
 from app.services.sync_service import SyncService
+from app.services.garmin_to_strava_sync_service import GarminToStravaSyncService
 from app.services.strava_service import StravaService
+from app.services.garmin_service import GarminService
 import logging
 from datetime import datetime, timedelta, timezone
 
@@ -182,3 +184,79 @@ def poll_strava_activities_task(
 
         except Exception as e:
             logger.error(f"Error polling Strava for user {user.id}: {e}", exc_info=True)
+
+
+@celery_app.task(bind=True, base=DatabaseTask)
+def poll_garmin_activities_task(
+    self,
+    lookback_days: int = 7,
+    max_activities_per_user: int = 100
+):
+    """
+    Periodically poll Garmin for new activities per user and sync them to Strava.
+
+    Args:
+        lookback_days: How far back to look for activities (in days)
+        max_activities_per_user: Cap on activities fetched per user per run
+    """
+    logger.info(f"Starting periodic Garmin poll (looking back {lookback_days} days)")
+    lookback_start = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+
+    users = self.db.query(User).filter(
+        User.is_active == True
+    ).all()
+
+    for user in users:
+        # Only process users with both Strava and Garmin connected
+        if not user.strava_auth or not user.garmin_auth:
+            continue
+
+        try:
+            garmin_service = GarminService(self.db)
+            sync_service = GarminToStravaSyncService(self.db, user)
+
+            # Connect to Garmin
+            if not garmin_service.connect(user):
+                logger.error(f"Failed to connect to Garmin for user {user.id}")
+                continue
+
+            # Fetch recent activities from Garmin
+            activities = garmin_service.get_activities(
+                start_date=lookback_start.strftime("%Y-%m-%d"),
+                limit=max_activities_per_user
+            )
+
+            if not activities:
+                logger.info(f"User {user.id}: no Garmin activities found")
+                continue
+
+            logger.info(f"User {user.id}: fetched {len(activities)} Garmin activities")
+
+            for activity in activities:
+                garmin_id = str(activity.get("activityId"))
+                if not garmin_id:
+                    continue
+
+                # Skip if we've already synced this activity (either direction)
+                existing_sync = sync_service.check_duplicate_sync(garmin_id)
+                if existing_sync:
+                    continue
+
+                # Apply user's activity filters before syncing
+                activity_name = activity.get("activityName", "Untitled")
+                activity_type = activity.get("activityType", {}).get("typeKey", "")
+
+                # Check if activity matches user's filters
+                should_sync, skip_reason = sync_service.should_sync_activity(activity_name, activity_type)
+                if not should_sync:
+                    logger.info(
+                        f"Skipping Garmin activity {garmin_id} '{activity_name}' (type: {activity_type}) "
+                        f"for user {user.id} - {skip_reason}"
+                    )
+                    continue
+
+                logger.info(f"Queueing Garmin→Strava sync for user {user.id} activity {garmin_id} '{activity_name}'")
+                sync_service.sync_activity(garmin_id)
+
+        except Exception as e:
+            logger.error(f"Error polling Garmin for user {user.id}: {e}", exc_info=True)

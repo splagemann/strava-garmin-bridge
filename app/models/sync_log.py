@@ -15,7 +15,14 @@ class SyncLog(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
-    # Activity identifiers
+    # Sync direction: "strava_to_garmin" or "garmin_to_strava"
+    sync_direction = Column(String, nullable=False, default="strava_to_garmin", index=True)
+
+    # Activity identifiers (flexible based on direction)
+    source_activity_id = Column(String, nullable=False, index=True)  # Strava ID or Garmin ID (based on direction)
+    target_activity_id = Column(String, nullable=True)  # Result ID from target platform
+
+    # Legacy fields (kept for backwards compatibility)
     strava_activity_id = Column(String, nullable=False, index=True)
     garmin_activity_id = Column(String, nullable=True)  # Set after successful upload
 

@@ -34,5 +34,13 @@ celery_app.conf.update(
                 "max_activities_per_user": 100,  # increased to handle more activities
             },
         },
+        "poll-garmin-activities-every-5-minutes": {
+            "task": "app.tasks.sync_tasks.poll_garmin_activities_task",
+            "schedule": timedelta(minutes=5),
+            "kwargs": {
+                "lookback_days": 7,  # fetch activities from last 7 days
+                "max_activities_per_user": 100,
+            },
+        },
     },
 )

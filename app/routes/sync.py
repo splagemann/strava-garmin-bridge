@@ -9,6 +9,7 @@ from datetime import datetime
 from app.database import get_db
 from app.models import User, SyncLog
 from app.services.sync_service import SyncService
+from app.services.garmin_to_strava_sync_service import GarminToStravaSyncService
 from app.middleware.auth import get_current_user
 import logging
 
@@ -17,15 +18,23 @@ router = APIRouter()
 
 
 class SyncRequest(BaseModel):
-    """Request model for manual sync."""
+    """Request model for manual sync (Strava to Garmin)."""
     strava_activity_id: int
+
+
+class GarminSyncRequest(BaseModel):
+    """Request model for manual sync (Garmin to Strava)."""
+    garmin_activity_id: str
 
 
 class SyncLogResponse(BaseModel):
     """Response model for sync log."""
     id: int
-    strava_activity_id: str
-    garmin_activity_id: Optional[str]
+    sync_direction: str
+    source_activity_id: str
+    target_activity_id: Optional[str]
+    strava_activity_id: str  # Legacy field for backward compatibility
+    garmin_activity_id: Optional[str]  # Legacy field for backward compatibility
     status: str
     error_message: Optional[str]
     activity_name: Optional[str]
@@ -43,8 +52,11 @@ class SyncLogDetailResponse(BaseModel):
     for security reasons as they may contain credentials or precise location data.
     """
     id: int
-    strava_activity_id: str
-    garmin_activity_id: Optional[str]
+    sync_direction: str
+    source_activity_id: str
+    target_activity_id: Optional[str]
+    strava_activity_id: str  # Legacy field for backward compatibility
+    garmin_activity_id: Optional[str]  # Legacy field for backward compatibility
     status: str
     error_message: Optional[str]
     activity_name: Optional[str]
@@ -62,7 +74,7 @@ async def manual_sync(
     db: Session = Depends(get_db)
 ):
     """
-    Manually trigger sync for a specific Strava activity.
+    Manually trigger sync for a specific Strava activity (Strava → Garmin).
 
     Requires: Bearer token authentication
     """
@@ -88,12 +100,46 @@ async def manual_sync(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/manual/garmin-to-strava")
+async def manual_sync_garmin_to_strava(
+    sync_request: GarminSyncRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Manually trigger sync for a specific Garmin activity (Garmin → Strava).
+
+    Requires: Bearer token authentication
+    """
+    user = current_user
+
+    # Check if user has both Strava and Garmin configured
+    if not user.strava_auth:
+        raise HTTPException(status_code=400, detail="Strava not connected")
+
+    if not user.garmin_auth:
+        raise HTTPException(status_code=400, detail="Garmin not connected")
+
+    # Perform sync
+    try:
+        sync_service = GarminToStravaSyncService(db, user)
+        result = sync_service.sync_activity(sync_request.garmin_activity_id)
+
+        return result
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error during manual Garmin to Strava sync: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/history", response_model=List[SyncLogResponse])
 async def sync_history(
     current_user: User = Depends(get_current_user),
     limit: int = Query(50, description="Maximum number of logs to return"),
     offset: int = Query(0, description="Number of logs to skip"),
     status: Optional[str] = Query(None, description="Filter by status"),
+    direction: Optional[str] = Query(None, description="Filter by sync direction (strava_to_garmin or garmin_to_strava)"),
     db: Session = Depends(get_db)
 ):
     """
@@ -107,6 +153,15 @@ async def sync_history(
     # Filter by status if provided
     if status:
         query = query.filter(SyncLog.status == status)
+
+    # Filter by direction if provided
+    if direction:
+        if direction not in ["strava_to_garmin", "garmin_to_strava"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid direction. Must be: strava_to_garmin or garmin_to_strava"
+            )
+        query = query.filter(SyncLog.sync_direction == direction)
 
     # Order by created_at descending (most recent first)
     query = query.order_by(SyncLog.created_at.desc())

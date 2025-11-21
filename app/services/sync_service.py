@@ -113,7 +113,9 @@ class SyncService:
         # Create sync log entry
         sync_log = SyncLog(
             user_id=self.user.id,
-            strava_activity_id=str(strava_activity_id),
+            sync_direction="strava_to_garmin",
+            source_activity_id=str(strava_activity_id),
+            strava_activity_id=str(strava_activity_id),  # Legacy field
             status="pending"
         )
         self.db.add(sync_log)
@@ -307,5 +309,6 @@ class SyncService:
 
         if garmin_activity_id:
             sync_log.garmin_activity_id = garmin_activity_id
+            sync_log.target_activity_id = garmin_activity_id  # Set target_activity_id for new schema
 
         self.db.commit()

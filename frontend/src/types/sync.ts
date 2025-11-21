@@ -1,7 +1,10 @@
 export interface SyncLog {
   id: number;
-  strava_activity_id: string;
-  garmin_activity_id: string | null;
+  sync_direction: 'strava_to_garmin' | 'garmin_to_strava';
+  source_activity_id: string;
+  target_activity_id: string | null;
+  strava_activity_id: string;  // Legacy field for backward compatibility
+  garmin_activity_id: string | null;  // Legacy field for backward compatibility
   status: 'success' | 'failed' | 'skipped' | 'pending';
   error_message: string | null;
   activity_name: string | null;

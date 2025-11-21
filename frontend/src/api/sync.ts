@@ -3,10 +3,18 @@ import type { SyncLog, SyncStats, ManualSyncRequest, ManualSyncResponse } from '
 
 export const syncApi = {
   /**
-   * Trigger manual sync for a specific activity
+   * Trigger manual sync for a specific activity (Strava → Garmin)
    */
   manualSync: async (data: ManualSyncRequest): Promise<ManualSyncResponse> => {
     const response = await apiClient.post('/api/v1/sync/manual', data);
+    return response.data;
+  },
+
+  /**
+   * Trigger manual sync for a specific Garmin activity (Garmin → Strava)
+   */
+  manualSyncGarminToStrava: async (data: { garmin_activity_id: string }): Promise<ManualSyncResponse> => {
+    const response = await apiClient.post('/api/v1/sync/manual/garmin-to-strava', data);
     return response.data;
   },
 
@@ -17,6 +25,7 @@ export const syncApi = {
     limit?: number;
     offset?: number;
     status?: string;
+    direction?: 'strava_to_garmin' | 'garmin_to_strava';
   }): Promise<SyncLog[]> => {
     const response = await apiClient.get('/api/v1/sync/history', { params });
     return response.data;
@@ -71,8 +80,11 @@ export const syncApi = {
    */
   getSyncLogDetails: async (syncLogId: number): Promise<{
     id: number;
-    strava_activity_id: string;
-    garmin_activity_id: string | null;
+    sync_direction: string;
+    source_activity_id: string;
+    target_activity_id: string | null;
+    strava_activity_id: string;  // Legacy field
+    garmin_activity_id: string | null;  // Legacy field
     status: string;
     error_message: string | null;
     activity_name: string | null;

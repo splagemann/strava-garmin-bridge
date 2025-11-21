@@ -6,13 +6,13 @@ import type { ManualSyncRequest } from '../types';
 export function useSync() {
   const queryClient = useQueryClient();
 
-  const { data: syncHistory, isLoading: isLoadingHistory } = useQuery({
+  const { data: syncHistory, isLoading: isLoadingHistory, refetch: refetchHistory } = useQuery({
     queryKey: QUERY_KEYS.syncHistory(),
     queryFn: () => syncApi.getSyncHistory(),
     refetchInterval: 30000, // Auto-refresh every 30 seconds
   });
 
-  const { data: syncStats, isLoading: isLoadingStats } = useQuery({
+  const { data: syncStats, isLoading: isLoadingStats, refetch: refetchStats } = useQuery({
     queryKey: QUERY_KEYS.syncStats,
     queryFn: syncApi.getSyncStats,
     refetchInterval: 30000,
@@ -50,6 +50,10 @@ export function useSync() {
     },
   });
 
+  const refetch = async () => {
+    await Promise.all([refetchHistory(), refetchStats()]);
+  };
+
   return {
     syncHistory: syncHistory || [],
     syncStats,
@@ -64,5 +68,6 @@ export function useSync() {
     isRetrying: retrySyncMutation.isPending,
     isDeleting: deleteSyncMutation.isPending,
     isBulkDeleting: bulkDeleteSyncMutation.isPending,
+    refetch,
   };
 }

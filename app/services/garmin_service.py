@@ -199,6 +199,62 @@ class GarminService:
             logger.error(f"Error fetching Garmin activities: {e}")
             return None
 
+    def download_activity_original(self, activity_id: str, output_path: str) -> Optional[str]:
+        """
+        Download original activity file (FIT) from Garmin Connect.
+
+        Args:
+            activity_id: Garmin activity ID
+            output_path: Path to save the FIT file
+
+        Returns:
+            Path to saved FIT file or None if error
+        """
+        if not self.client:
+            logger.error("Garmin client not connected")
+            return None
+
+        try:
+            import zipfile
+            import io
+            import os
+
+            logger.info(f"Downloading original activity file for activity {activity_id}")
+
+            # Download activity in ORIGINAL format (returns zip file bytes)
+            zip_data = self.client.download_activity(activity_id, dl_fmt=self.client.ActivityDownloadFormat.ORIGINAL)
+
+            if not zip_data:
+                logger.error(f"No data returned for activity {activity_id}")
+                return None
+
+            # Extract FIT file from zip
+            with zipfile.ZipFile(io.BytesIO(zip_data)) as zip_file:
+                # Find FIT file in zip (usually there's only one)
+                fit_files = [f for f in zip_file.namelist() if f.lower().endswith('.fit')]
+
+                if not fit_files:
+                    logger.error(f"No FIT file found in downloaded zip for activity {activity_id}")
+                    return None
+
+                # Extract the first FIT file
+                fit_filename = fit_files[0]
+                logger.info(f"Extracting {fit_filename} from zip")
+
+                fit_data = zip_file.read(fit_filename)
+
+                # Save to output path
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                with open(output_path, 'wb') as f:
+                    f.write(fit_data)
+
+                logger.info(f"Saved FIT file to {output_path} ({len(fit_data)} bytes)")
+                return output_path
+
+        except Exception as e:
+            logger.error(f"Error downloading activity {activity_id}: {e}", exc_info=True)
+            return None
+
     def verify_credentials(self, email: str, password: str) -> tuple[bool, Optional[str]]:
         """
         Verify Garmin credentials by attempting login.
