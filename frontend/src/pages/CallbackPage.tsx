@@ -7,11 +7,26 @@ export default function CallbackPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState<'processing' | 'error'>('processing');
+  const [hasProcessed, setHasProcessed] = useState(false);
 
   useEffect(() => {
+    const code = searchParams.get('code');
+    const state = searchParams.get('state');
+
+    // Prevent double execution in React StrictMode or page refresh
+    // Use code+state as unique key since OAuth codes are single-use
+    const callbackKey = `${code}_${state}`;
+    const lastProcessedKey = sessionStorage.getItem('last_oauth_callback');
+
+    if (hasProcessed || lastProcessedKey === callbackKey) {
+      console.log('Callback already processed, skipping');
+      return;
+    }
+
     const handleCallback = async () => {
-      const code = searchParams.get('code');
-      const state = searchParams.get('state');
+      setHasProcessed(true);
+      // Mark this specific code as processed to prevent reuse
+      sessionStorage.setItem('last_oauth_callback', callbackKey);
       const error = searchParams.get('error');
 
       // Handle Strava OAuth error
@@ -43,19 +58,39 @@ export default function CallbackPage() {
 
         toast.success('Successfully connected to Strava!');
 
-        // Redirect to auth page to complete setup
-        navigate('/auth');
+        // Small delay to ensure localStorage is synced before navigating
+        // This prevents race conditions with auth status checks
+        setTimeout(() => {
+          // Redirect to auth page to complete setup
+          navigate('/auth');
+        }, 100);
       } catch (error: any) {
         console.error('Error exchanging Strava code:', error);
-        const errorMessage = error.response?.data?.detail || error.message || 'Failed to connect to Strava';
+        console.error('Error response:', error.response?.data);
+
+        // Handle specific error cases
+        const errorDetail = error.response?.data?.detail || '';
+        let errorMessage = error.response?.data?.detail || error.message || 'Failed to connect to Strava';
+
+        // Check if it's an "invalid code" error (code already used or expired)
+        if (errorDetail.includes('invalid') && errorDetail.includes('code')) {
+          errorMessage = 'OAuth code was already used or expired. Please try connecting again.';
+          // Clear the processed key so user can retry
+          sessionStorage.removeItem('last_oauth_callback');
+        }
+
         toast.error(errorMessage);
         setStatus('error');
+
+        // Immediately replace URL to prevent accidental refresh with stale code
+        window.history.replaceState({}, '', '/auth/callback');
+
         setTimeout(() => navigate('/auth'), 2000);
       }
     };
 
     handleCallback();
-  }, [searchParams, navigate]);
+  }, [searchParams, navigate, hasProcessed]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">

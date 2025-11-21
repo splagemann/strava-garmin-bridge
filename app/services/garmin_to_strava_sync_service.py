@@ -3,7 +3,7 @@ Sync service for orchestrating activity synchronization from Garmin to Strava.
 """
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import tempfile
 import os
 import logging
@@ -103,16 +103,15 @@ class GarminToStravaSyncService:
         Returns:
             Existing SyncLog if found, None otherwise
         """
-        # Check if already synced Garmin→Strava
+        # Check if already synced Garmin→Strava (any status - don't retry failed/skipped activities)
         existing_sync = self.db.query(SyncLog).filter(
             SyncLog.user_id == self.user.id,
             SyncLog.sync_direction == "garmin_to_strava",
-            SyncLog.source_activity_id == str(garmin_activity_id),
-            SyncLog.status.in_(["success", "pending"])
+            SyncLog.source_activity_id == str(garmin_activity_id)
         ).first()
 
         if existing_sync:
-            logger.info(f"Activity {garmin_activity_id} already synced Garmin→Strava")
+            logger.info(f"Activity {garmin_activity_id} already in sync log with status '{existing_sync.status}'")
             return existing_sync
 
         # Check if this Garmin activity was originally synced FROM Strava (prevent ping-pong)
@@ -129,12 +128,21 @@ class GarminToStravaSyncService:
 
         return None
 
-    def sync_activity(self, garmin_activity_id: str) -> Dict[str, Any]:
+    def sync_activity(
+        self,
+        garmin_activity_id: str,
+        force_sync: bool = False,
+        skip_date_filter: bool = False,
+        activity_data: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
         Sync a single activity from Garmin to Strava.
 
         Args:
             garmin_activity_id: Garmin activity ID
+            force_sync: If True, sync even if activity was already synced (for manual/retry)
+            skip_date_filter: If True, don't apply 7-day lookback filter (for manual sync of old activities)
+            activity_data: Optional pre-fetched activity data (from cron job) to avoid redundant API calls
 
         Returns:
             Dictionary with sync result
@@ -145,16 +153,17 @@ class GarminToStravaSyncService:
             "message": ""
         }
 
-        # Check for duplicate sync
-        existing_sync = self.check_duplicate_sync(garmin_activity_id)
-        if existing_sync:
-            result["status"] = "skipped"
-            if existing_sync.sync_direction == "strava_to_garmin":
-                result["message"] = "Activity originally from Strava (preventing ping-pong sync)"
-            else:
-                result["message"] = "Activity already synced to Strava"
-            result["sync_log_id"] = existing_sync.id
-            return result
+        # Check for duplicate sync (skip if force_sync is True)
+        if not force_sync:
+            existing_sync = self.check_duplicate_sync(garmin_activity_id)
+            if existing_sync:
+                result["status"] = "skipped"
+                if existing_sync.sync_direction == "strava_to_garmin":
+                    result["message"] = "Activity originally from Strava (preventing ping-pong sync)"
+                else:
+                    result["message"] = "Activity already synced to Strava"
+                result["sync_log_id"] = existing_sync.id
+                return result
 
         # Create sync log entry
         sync_log = SyncLog(
@@ -178,26 +187,20 @@ class GarminToStravaSyncService:
                 self._update_sync_log(sync_log, "failed", result["message"])
                 return result
 
-            # 2. Fetch activity details from Garmin
-            logger.info(f"Fetching activity {garmin_activity_id} details from Garmin")
-            activities = self.garmin_service.get_activities(start_date="2020-01-01", limit=100)
+            # 2. Fetch activity details from Garmin (if not already provided)
+            if activity_data:
+                # Activity data already provided (e.g., from cron job)
+                logger.info(f"Using pre-fetched activity data for {garmin_activity_id}")
+                activity = activity_data
+            else:
+                # Need to fetch activity by ID (e.g., manual sync)
+                logger.info(f"Fetching activity {garmin_activity_id} details from Garmin")
+                activity = self.garmin_service.get_activity_by_id(garmin_activity_id)
 
-            if not activities:
-                result["message"] = "Failed to fetch activities from Garmin"
-                self._update_sync_log(sync_log, "failed", result["message"])
-                return result
-
-            # Find the specific activity
-            activity = None
-            for act in activities:
-                if str(act.get("activityId")) == str(garmin_activity_id):
-                    activity = act
-                    break
-
-            if not activity:
-                result["message"] = f"Activity {garmin_activity_id} not found in Garmin"
-                self._update_sync_log(sync_log, "failed", result["message"])
-                return result
+                if not activity:
+                    result["message"] = f"Activity {garmin_activity_id} not found in Garmin"
+                    self._update_sync_log(sync_log, "failed", result["message"])
+                    return result
 
             # Store activity metadata
             activity_name = activity.get("activityName", "Untitled")
