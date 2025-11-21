@@ -9,8 +9,15 @@ export default function SyncHistoryPage() {
   const { syncHistory, retrySync, deleteSyncLog, bulkDeleteSyncLogs, isRetrying, isDeleting } = useSync();
   const [showBulkDelete, setShowBulkDelete] = useState(false);
   const [bulkDeleteStatus, setBulkDeleteStatus] = useState<string>('');
+  const [directionFilter, setDirectionFilter] = useState<string>('all');
   const [selectedLogDetails, setSelectedLogDetails] = useState<any>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
+
+  // Filter sync history by direction
+  const filteredHistory = syncHistory.filter(log => {
+    if (directionFilter === 'all') return true;
+    return log.sync_direction === directionFilter;
+  });
 
   const handleRetry = async (id: number) => {
     try {
@@ -70,12 +77,26 @@ export default function SyncHistoryPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Sync History</h1>
-        <button
-          onClick={() => setShowBulkDelete(!showBulkDelete)}
-          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md font-medium"
-        >
-          {showBulkDelete ? 'Cancel' : 'Bulk Delete'}
-        </button>
+        <div className="flex gap-4 items-center">
+          <div>
+            <label className="text-sm font-medium text-gray-700 mr-2">Direction:</label>
+            <select
+              value={directionFilter}
+              onChange={(e) => setDirectionFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+            >
+              <option value="all">All</option>
+              <option value="strava_to_garmin">Strava → Garmin</option>
+              <option value="garmin_to_strava">Garmin → Strava</option>
+            </select>
+          </div>
+          <button
+            onClick={() => setShowBulkDelete(!showBulkDelete)}
+            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md font-medium"
+          >
+            {showBulkDelete ? 'Cancel' : 'Bulk Delete'}
+          </button>
+        </div>
       </div>
 
       {showBulkDelete && (
@@ -111,8 +132,9 @@ export default function SyncHistoryPage() {
 
       <div className="bg-white rounded-lg shadow">
         <div className="px-6 py-4 border-b">
-          <div className="grid grid-cols-6 gap-4 text-sm font-medium text-gray-500">
+          <div className="grid grid-cols-7 gap-4 text-sm font-medium text-gray-500">
             <div className="col-span-2">Activity</div>
+            <div>Direction</div>
             <div>Type</div>
             <div>Status</div>
             <div>Date</div>
@@ -120,15 +142,23 @@ export default function SyncHistoryPage() {
           </div>
         </div>
         <div className="divide-y">
-          {syncHistory.map((log) => (
+          {filteredHistory.map((log) => (
             <div key={log.id} className="px-6 py-4 hover:bg-gray-50">
-              <div className="grid grid-cols-6 gap-4 items-center">
+              <div className="grid grid-cols-7 gap-4 items-center">
                 <div className="col-span-2">
                   <div className="font-medium">{log.activity_name || 'Unnamed Activity'}</div>
-                  <div className="text-sm text-gray-500">ID: {log.strava_activity_id}</div>
+                  <div className="text-sm text-gray-500">
+                    Source ID: {log.source_activity_id}
+                    {log.target_activity_id && ` → ${log.target_activity_id}`}
+                  </div>
                   {log.error_message && (
                     <div className="text-xs text-red-600 mt-1">{log.error_message}</div>
                   )}
+                </div>
+                <div>
+                  <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700 font-medium">
+                    {log.sync_direction === 'strava_to_garmin' ? 'S → G' : 'G → S'}
+                  </span>
                 </div>
                 <div className="text-sm text-gray-600">{log.activity_type || '-'}</div>
                 <div>
@@ -169,6 +199,11 @@ export default function SyncHistoryPage() {
               </div>
             </div>
           ))}
+          {filteredHistory.length === 0 && syncHistory.length > 0 && (
+            <div className="px-6 py-12 text-center text-gray-500">
+              No syncs match the selected filter.
+            </div>
+          )}
           {syncHistory.length === 0 && (
             <div className="px-6 py-12 text-center text-gray-500">
               No sync history yet. Try syncing an activity!
@@ -200,8 +235,9 @@ export default function SyncHistoryPage() {
                   <div className="bg-gray-50 p-4 rounded space-y-2">
                     <div><strong>Activity Name:</strong> {selectedLogDetails.activity_name || 'N/A'}</div>
                     <div><strong>Activity Type:</strong> {selectedLogDetails.activity_type || 'N/A'}</div>
-                    <div><strong>Strava ID:</strong> {selectedLogDetails.strava_activity_id}</div>
-                    <div><strong>Garmin ID:</strong> {selectedLogDetails.garmin_activity_id || 'N/A'}</div>
+                    <div><strong>Sync Direction:</strong> {selectedLogDetails.sync_direction === 'strava_to_garmin' ? 'Strava → Garmin' : 'Garmin → Strava'}</div>
+                    <div><strong>Source Activity ID:</strong> {selectedLogDetails.source_activity_id}</div>
+                    <div><strong>Target Activity ID:</strong> {selectedLogDetails.target_activity_id || 'N/A'}</div>
                     <div><strong>Status:</strong> {selectedLogDetails.status}</div>
                   </div>
                 </div>

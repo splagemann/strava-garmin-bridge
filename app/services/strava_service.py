@@ -49,7 +49,7 @@ class StravaService:
         url = client.authorization_url(
             client_id=settings.STRAVA_CLIENT_ID,
             redirect_uri=redirect_uri,
-            scope=["read", "activity:read", "activity:read_all"],
+            scope=["read", "activity:read", "activity:read_all", "activity:write"],
             state=state  # CSRF protection
         )
         return url, signed_state
@@ -243,4 +243,100 @@ class StravaService:
         except Exception as e:
             logger.error(f"Error listing activities for user {user.id}: {e}", exc_info=True)
             return []
+
+    def upload_activity(
+        self,
+        user: User,
+        file_path: str,
+        activity_type: Optional[str] = None,
+        name: Optional[str] = None,
+        description: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Upload activity file (FIT, GPX, or TCX) to Strava.
+
+        Args:
+            user: User object
+            file_path: Path to activity file
+            activity_type: Optional activity type (e.g., 'ride', 'run')
+            name: Optional activity name
+            description: Optional activity description
+
+        Returns:
+            Dictionary with upload status and activity_id, or None if error
+        """
+        client = self.get_authenticated_client(user)
+        if not client:
+            logger.error(f"No authenticated Strava client for user {user.id}")
+            return None
+
+        try:
+            import time
+            import os
+
+            if not os.path.exists(file_path):
+                logger.error(f"Activity file does not exist: {file_path}")
+                return None
+
+            logger.info(f"Uploading activity to Strava from {file_path}")
+
+            # Determine file format from extension
+            file_ext = os.path.splitext(file_path)[1].lower()
+            if file_ext not in ['.fit', '.gpx', '.tcx']:
+                logger.error(f"Unsupported file format: {file_ext}")
+                return None
+
+            # Upload file to Strava
+            with open(file_path, 'rb') as f:
+                uploader = client.upload_activity(
+                    activity_file=f,
+                    data_type=file_ext[1:],  # Remove the dot: 'fit', 'gpx', or 'tcx'
+                    activity_type=activity_type,
+                    name=name,
+                    description=description
+                )
+
+            logger.info(f"Upload initiated, waiting for processing...")
+
+            # Wait for upload to complete (returns DetailedActivity on success)
+            # The wait() method polls Strava until processing is complete
+            try:
+                activity = uploader.wait(timeout=60, poll_interval=2)
+
+                if activity and hasattr(activity, 'id'):
+                    logger.info(f"Upload successful! Activity ID: {activity.id}")
+                    return {
+                        "success": True,
+                        "activity_id": str(activity.id)
+                    }
+                else:
+                    logger.error("Upload completed but no activity ID returned")
+                    return {
+                        "success": False,
+                        "error": "Upload completed but no activity ID returned"
+                    }
+
+            except Exception as wait_error:
+                # Check if uploader has error information
+                if uploader.is_error:
+                    error_msg = f"Upload failed during processing: {wait_error}"
+                    logger.error(error_msg)
+                    return {
+                        "success": False,
+                        "error": error_msg
+                    }
+                else:
+                    # Timeout or other error
+                    logger.warning(f"Upload timeout or error: {wait_error}")
+                    return {
+                        "success": False,
+                        "error": f"Upload timeout: {str(wait_error)}"
+                    }
+
+        except Exception as e:
+            logger.error(f"Error uploading activity to Strava: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e)
+            }
 
