@@ -193,7 +193,21 @@ class GarminService:
             return None
 
         try:
-            activities = self.client.get_activities(0, limit)
+            from datetime import datetime, timedelta
+
+            # Calculate end_date as today
+            end_date = datetime.now().strftime("%Y-%m-%d")
+
+            # Use Garmin's built-in date filtering
+            activities = self.client.get_activities_by_date(
+                startdate=start_date,
+                enddate=end_date
+            )
+
+            # Limit the results if we got more than requested
+            if activities and len(activities) > limit:
+                activities = activities[:limit]
+
             return activities
         except Exception as e:
             logger.error(f"Error fetching Garmin activities: {e}")
