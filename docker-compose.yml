@@ -78,7 +78,7 @@ services:
   # Celery Beat (for scheduled tasks)
   celery-beat:
     build: .
-    command: celery -A app.celery_app beat --loglevel=info
+    command: sh -c "rm -f /app/celerybeat-schedule* && celery -A app.celery_app beat --loglevel=info"
     volumes:
       - .:/app
     environment:

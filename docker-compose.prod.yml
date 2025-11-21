@@ -113,7 +113,7 @@ services:
     image: ghcr.io/${GITHUB_REPO:-splagemann/strava-garmin-bridge}/backend:${IMAGE_TAG:-latest}
     container_name: strava-garmin-celery-beat
     restart: unless-stopped
-    command: celery -A app.celery_app beat --loglevel=info
+    command: sh -c "rm -f /app/celerybeat-schedule* && celery -A app.celery_app beat --loglevel=info"
     depends_on:
       db:
         condition: service_healthy
