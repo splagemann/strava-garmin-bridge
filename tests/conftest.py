@@ -18,12 +18,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from app.database import Base, get_db
 from app.main import app
-from app.models.activity_filter import ActivityFilter
-from app.models.garmin_auth import GarminAuth
-from app.models.strava_auth import StravaAuth
+from app.models.filter import ActivityFilter
+from app.models.auth import GarminAuth, StravaAuth
 from app.models.sync_log import SyncLog
 from app.models.user import User
-from app.utils.crypto import encrypt_password
+from app.utils.crypto import encrypt
 
 # Test database URL - using in-memory SQLite for speed
 SQLALCHEMY_TEST_DATABASE_URL = "sqlite:///:memory:"
@@ -103,8 +102,8 @@ def test_user_with_garmin(test_db: Session, test_user: User) -> User:
     """Create a test user with Garmin authentication."""
     garmin_auth = GarminAuth(
         user_id=test_user.id,
-        email=encrypt_password("garmin@example.com"),
-        password=encrypt_password("garmin_password"),
+        email=encrypt("garmin@example.com"),
+        password=encrypt("garmin_password"),
     )
     test_db.add(garmin_auth)
     test_db.commit()
@@ -117,8 +116,8 @@ def test_user_full(test_db: Session, test_user_with_strava: User) -> User:
     """Create a test user with both Strava and Garmin authentication."""
     garmin_auth = GarminAuth(
         user_id=test_user_with_strava.id,
-        email=encrypt_password("garmin@example.com"),
-        password=encrypt_password("garmin_password"),
+        email=encrypt("garmin@example.com"),
+        password=encrypt("garmin_password"),
     )
     test_db.add(garmin_auth)
     test_db.commit()
