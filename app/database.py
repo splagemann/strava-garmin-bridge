@@ -1,16 +1,16 @@
 """
 Database connection and session management.
 """
+
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+
 from app.config import settings
 
 # Create database engine
 engine = create_engine(
-    settings.DATABASE_URL,
-    pool_pre_ping=True,
-    echo=settings.ENVIRONMENT == "development"
+    settings.DATABASE_URL, pool_pre_ping=True, echo=settings.ENVIRONMENT == "development"
 )
 
 # Create session factory

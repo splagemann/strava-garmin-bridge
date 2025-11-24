@@ -1,12 +1,15 @@
 """
 JWT token utilities for authentication.
 """
-from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
-from jose import JWTError, jwt
-from app.config import settings
-import secrets
+
 import logging
+import secrets
+from datetime import datetime, timedelta
+from typing import Any, Dict, Optional
+
+from jose import JWTError, jwt
+
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +36,7 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
     else:
         expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 
-    to_encode.update({
-        "exp": expire,
-        "iat": datetime.utcnow(),
-        "type": "access"
-    })
+    to_encode.update({"exp": expire, "iat": datetime.utcnow(), "type": "access"})
 
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
@@ -94,12 +93,7 @@ def create_state_token(state: str, expires_in_minutes: int = 10) -> str:
     """
     expire = datetime.utcnow() + timedelta(minutes=expires_in_minutes)
 
-    to_encode = {
-        "state": state,
-        "exp": expire,
-        "iat": datetime.utcnow(),
-        "type": "state"
-    }
+    to_encode = {"state": state, "exp": expire, "iat": datetime.utcnow(), "type": "state"}
 
     encoded = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
     return encoded
@@ -132,7 +126,9 @@ def verify_state_token(token: str, expected_state: str) -> bool:
             return False
 
         if payload.get("state") != expected_state:
-            logger.warning(f"State mismatch: token has '{payload.get('state')}', expected '{expected_state}'")
+            logger.warning(
+                f"State mismatch: token has '{payload.get('state')}', expected '{expected_state}'"
+            )
             return False
 
         logger.info("State token verification: JWT validated successfully")
@@ -141,7 +137,9 @@ def verify_state_token(token: str, expected_state: str) -> bool:
     except JWTError as e:
         # If JWT decode fails, check if it's a direct match as fallback
         if token == expected_state:
-            logger.info("State token verification: JWT decode failed but direct match succeeded (fallback mode)")
+            logger.info(
+                "State token verification: JWT decode failed but direct match succeeded (fallback mode)"
+            )
             return True
         logger.warning(f"State token validation error: {e}")
         return False

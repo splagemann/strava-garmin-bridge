@@ -1,8 +1,11 @@
 """
 Celery application configuration.
 """
-from celery import Celery
+
 from datetime import timedelta
+
+from celery import Celery
+
 from app.config import settings
 
 # Create Celery app
@@ -10,7 +13,7 @@ celery_app = Celery(
     "strava_garmin_sync",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.tasks.sync_tasks"]
+    include=["app.tasks.sync_tasks"],
 )
 
 # Configure Celery

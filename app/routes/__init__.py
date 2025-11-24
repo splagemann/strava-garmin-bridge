@@ -1,6 +1,7 @@
 """
 API routes.
 """
-from app.routes import auth, filters, sync, activities
+
+from app.routes import activities, auth, filters, sync
 
 __all__ = ["auth", "filters", "sync", "activities"]

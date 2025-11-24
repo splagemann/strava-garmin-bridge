@@ -3,6 +3,7 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { useSync } from '../useSync';
 import { createTestQueryClient } from '../../test/test-utils';
 import { QueryClientProvider } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
 import * as api from '../../api';
 
 // Mock the API
@@ -13,7 +14,7 @@ vi.mock('../../api', () => ({
 }));
 
 describe('useSync', () => {
-  const wrapper = ({ children }: { children: React.ReactNode }) => (
+  const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={createTestQueryClient()}>
       {children}
     </QueryClientProvider>

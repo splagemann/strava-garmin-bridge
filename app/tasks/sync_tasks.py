@@ -1,16 +1,19 @@
 """
 Celery tasks for activity synchronization.
 """
-from celery import Task
-from app.celery_app import celery_app
-from app.database import SessionLocal
-from app.models import User, SyncLog
-from app.services.sync_service import SyncService
-from app.services.garmin_to_strava_sync_service import GarminToStravaSyncService
-from app.services.strava_service import StravaService
-from app.services.garmin_service import GarminService
+
 import logging
 from datetime import datetime, timedelta, timezone
+
+from celery import Task
+
+from app.celery_app import celery_app
+from app.database import SessionLocal
+from app.models import SyncLog, User
+from app.services.garmin_service import GarminService
+from app.services.garmin_to_strava_sync_service import GarminToStravaSyncService
+from app.services.strava_service import StravaService
+from app.services.sync_service import SyncService
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +78,7 @@ def sync_activity_task(self, user_id: int, strava_activity_id: int):
 
         # Retry with exponential backoff
         try:
-            raise self.retry(exc=e, countdown=2 ** self.request.retries)
+            raise self.retry(exc=e, countdown=2**self.request.retries)
         except self.MaxRetriesExceededError:
             logger.error(f"Max retries exceeded for activity {strava_activity_id}")
             return {"error": f"Max retries exceeded: {str(e)}"}
@@ -99,24 +102,13 @@ def sync_user_activities_task(self, user_id: int, activity_ids: list):
     for activity_id in activity_ids:
         # Queue individual sync tasks
         task = sync_activity_task.delay(user_id, activity_id)
-        results.append({
-            "activity_id": activity_id,
-            "task_id": task.id
-        })
+        results.append({"activity_id": activity_id, "task_id": task.id})
 
-    return {
-        "user_id": user_id,
-        "queued": len(results),
-        "tasks": results
-    }
+    return {"user_id": user_id, "queued": len(results), "tasks": results}
 
 
 @celery_app.task(bind=True, base=DatabaseTask)
-def poll_strava_activities_task(
-    self,
-    lookback_days: int = 7,
-    max_activities_per_user: int = 100
-):
+def poll_strava_activities_task(self, lookback_days: int = 7, max_activities_per_user: int = 100):
     """
     Periodically poll Strava for new activities per user and sync them.
 
@@ -127,9 +119,7 @@ def poll_strava_activities_task(
     logger.info(f"Starting periodic Strava poll (looking back {lookback_days} days)")
     lookback_start = datetime.now(timezone.utc) - timedelta(days=lookback_days)
 
-    users = self.db.query(User).filter(
-        User.is_active == True
-    ).all()
+    users = self.db.query(User).filter(User.is_active == True).all()
 
     for user in users:
         # Only process users with both Strava and Garmin connected
@@ -141,12 +131,12 @@ def poll_strava_activities_task(
             sync_service = SyncService(self.db, user)
 
             activities = strava_service.list_recent_activities(
-                user,
-                after=lookback_start,
-                limit=max_activities_per_user
+                user, after=lookback_start, limit=max_activities_per_user
             )
 
-            logger.info(f"User {user.id}: fetched {len(activities)} activities since {lookback_start.isoformat()}")
+            logger.info(
+                f"User {user.id}: fetched {len(activities)} activities since {lookback_start.isoformat()}"
+            )
 
             for activity in activities:
                 strava_id = str(getattr(activity, "id", None))
@@ -154,10 +144,11 @@ def poll_strava_activities_task(
                     continue
 
                 # Skip if we've already synced/attempted this activity
-                existing = self.db.query(SyncLog).filter(
-                    SyncLog.user_id == user.id,
-                    SyncLog.strava_activity_id == strava_id
-                ).first()
+                existing = (
+                    self.db.query(SyncLog)
+                    .filter(SyncLog.user_id == user.id, SyncLog.strava_activity_id == strava_id)
+                    .first()
+                )
 
                 if existing:
                     continue
@@ -168,6 +159,7 @@ def poll_strava_activities_task(
                 if hasattr(activity, "type") and activity.type:
                     # Extract activity type string (handles stravalib's format)
                     from app.utils.activity_converter import ActivityConverter
+
                     converter = ActivityConverter()
                     activity_type = converter.extract_activity_type(activity.type)
 
@@ -179,7 +171,9 @@ def poll_strava_activities_task(
                     )
                     continue
 
-                logger.info(f"Queueing sync for user {user.id} activity {strava_id} '{activity_name}'")
+                logger.info(
+                    f"Queueing sync for user {user.id} activity {strava_id} '{activity_name}'"
+                )
                 sync_service.sync_activity(int(strava_id))
 
         except Exception as e:
@@ -187,11 +181,7 @@ def poll_strava_activities_task(
 
 
 @celery_app.task(bind=True, base=DatabaseTask)
-def poll_garmin_activities_task(
-    self,
-    lookback_days: int = 7,
-    max_activities_per_user: int = 100
-):
+def poll_garmin_activities_task(self, lookback_days: int = 7, max_activities_per_user: int = 100):
     """
     Periodically poll Garmin for new activities per user and sync them to Strava.
 
@@ -202,9 +192,7 @@ def poll_garmin_activities_task(
     logger.info(f"Starting periodic Garmin poll (looking back {lookback_days} days)")
     lookback_start = datetime.now(timezone.utc) - timedelta(days=lookback_days)
 
-    users = self.db.query(User).filter(
-        User.is_active == True
-    ).all()
+    users = self.db.query(User).filter(User.is_active == True).all()
 
     for user in users:
         # Only process users with both Strava and Garmin connected
@@ -222,15 +210,16 @@ def poll_garmin_activities_task(
 
             # Fetch recent activities from Garmin
             activities = garmin_service.get_activities(
-                start_date=lookback_start.strftime("%Y-%m-%d"),
-                limit=max_activities_per_user
+                start_date=lookback_start.strftime("%Y-%m-%d"), limit=max_activities_per_user
             )
 
             if not activities:
                 logger.info(f"User {user.id}: no Garmin activities found")
                 continue
 
-            logger.info(f"User {user.id}: fetched {len(activities)} Garmin activities from last {lookback_days} days")
+            logger.info(
+                f"User {user.id}: fetched {len(activities)} Garmin activities from last {lookback_days} days"
+            )
 
             for activity in activities:
                 garmin_id = str(activity.get("activityId"))
@@ -241,24 +230,28 @@ def poll_garmin_activities_task(
                 # (Garmin API should already filter, but we verify here)
                 # Try different date fields that Garmin might provide
                 activity_date_str = (
-                    activity.get("startTimeGMT") or
-                    activity.get("startTimeLocal") or
-                    activity.get("beginTimestamp")
+                    activity.get("startTimeGMT")
+                    or activity.get("startTimeLocal")
+                    or activity.get("beginTimestamp")
                 )
                 if not activity_date_str:
                     # If no date field found, skip the activity to be safe
-                    logger.warning(f"Skipping Garmin activity {garmin_id} - no date field found (tried startTimeGMT, startTimeLocal, beginTimestamp)")
+                    logger.warning(
+                        f"Skipping Garmin activity {garmin_id} - no date field found (tried startTimeGMT, startTimeLocal, beginTimestamp)"
+                    )
                     continue
 
                 try:
                     # Parse datetime string from Garmin (handles multiple formats)
-                    if 'T' in activity_date_str or 'Z' in activity_date_str:
+                    if "T" in activity_date_str or "Z" in activity_date_str:
                         # ISO format with timezone: '2025-11-21T14:21:56Z'
-                        activity_date = datetime.fromisoformat(activity_date_str.replace('Z', '+00:00'))
+                        activity_date = datetime.fromisoformat(
+                            activity_date_str.replace("Z", "+00:00")
+                        )
                     else:
                         # Simple format without timezone: '2025-11-21 14:21:56'
                         # Assume UTC since Garmin stores times in UTC
-                        activity_date = datetime.strptime(activity_date_str, '%Y-%m-%d %H:%M:%S')
+                        activity_date = datetime.strptime(activity_date_str, "%Y-%m-%d %H:%M:%S")
                         activity_date = activity_date.replace(tzinfo=timezone.utc)
 
                     # Calculate age in days for logging
@@ -266,13 +259,17 @@ def poll_garmin_activities_task(
 
                     # Safety check: skip if somehow older than lookback window
                     if activity_date < lookback_start:
-                        logger.warning(f"Skipping old Garmin activity {garmin_id} from {activity_date_str} ({age_days} days old, limit is {lookback_days} days) - should have been filtered by API")
+                        logger.warning(
+                            f"Skipping old Garmin activity {garmin_id} from {activity_date_str} ({age_days} days old, limit is {lookback_days} days) - should have been filtered by API"
+                        )
                         continue
 
                     logger.debug(f"Processing Garmin activity {garmin_id} ({age_days} days old)")
                 except (ValueError, TypeError) as e:
                     # If date parsing fails, skip the activity to be safe
-                    logger.warning(f"Skipping Garmin activity {garmin_id} - could not parse date '{activity_date_str}': {e}")
+                    logger.warning(
+                        f"Skipping Garmin activity {garmin_id} - could not parse date '{activity_date_str}': {e}"
+                    )
                     continue
 
                 # Skip if we've already synced this activity (either direction)
@@ -285,7 +282,9 @@ def poll_garmin_activities_task(
                 activity_type = activity.get("activityType", {}).get("typeKey", "")
 
                 # Check if activity matches user's filters
-                should_sync, skip_reason = sync_service.should_sync_activity(activity_name, activity_type)
+                should_sync, skip_reason = sync_service.should_sync_activity(
+                    activity_name, activity_type
+                )
                 if not should_sync:
                     logger.info(
                         f"Skipping Garmin activity {garmin_id} '{activity_name}' (type: {activity_type}) "
@@ -293,7 +292,9 @@ def poll_garmin_activities_task(
                     )
                     continue
 
-                logger.info(f"Queueing Garmin→Strava sync for user {user.id} activity {garmin_id} '{activity_name}'")
+                logger.info(
+                    f"Queueing Garmin→Strava sync for user {user.id} activity {garmin_id} '{activity_name}'"
+                )
                 # Pass the activity data to avoid redundant API call
                 sync_service.sync_activity(garmin_id, activity_data=activity)
 

@@ -1,17 +1,19 @@
 """
 Sync service for orchestrating activity synchronization between Strava and Garmin.
 """
-from sqlalchemy.orm import Session
-from typing import Dict, Any, Optional
-from datetime import datetime
+
+import logging
+import os
 import re
 import tempfile
-import os
-import logging
+from datetime import datetime
+from typing import Any, Dict, Optional
 
-from app.models import User, ActivityFilter, SyncLog
-from app.services.strava_service import StravaService
+from sqlalchemy.orm import Session
+
+from app.models import ActivityFilter, SyncLog, User
 from app.services.garmin_service import GarminService
+from app.services.strava_service import StravaService
 from app.utils.activity_converter import ActivityConverter
 
 logger = logging.getLogger(__name__)
@@ -46,10 +48,11 @@ class SyncService:
             True if activity should be synced, False otherwise
         """
         # Get active filters for user
-        filters = self.db.query(ActivityFilter).filter(
-            ActivityFilter.user_id == self.user.id,
-            ActivityFilter.active == True
-        ).all()
+        filters = (
+            self.db.query(ActivityFilter)
+            .filter(ActivityFilter.user_id == self.user.id, ActivityFilter.active == True)
+            .all()
+        )
 
         # If no filters, sync all activities by default
         if not filters:
@@ -64,7 +67,9 @@ class SyncService:
             matches = False
 
             # Determine which field to match against
-            filter_field = getattr(filter_rule, 'filter_field', 'name')  # Default to 'name' for backward compatibility
+            filter_field = getattr(
+                filter_rule, "filter_field", "name"
+            )  # Default to 'name' for backward compatibility
             if filter_field == "type" and activity_type:
                 match_value = activity_type
             else:
@@ -106,11 +111,7 @@ class SyncService:
         Returns:
             Dictionary with sync result
         """
-        result = {
-            "status": "failed",
-            "strava_activity_id": strava_activity_id,
-            "message": ""
-        }
+        result = {"status": "failed", "strava_activity_id": strava_activity_id, "message": ""}
 
         # Create sync log entry
         sync_log = SyncLog(
@@ -118,7 +119,7 @@ class SyncService:
             sync_direction="strava_to_garmin",
             source_activity_id=str(strava_activity_id),
             strava_activity_id=str(strava_activity_id),  # Legacy field
-            status="pending"
+            status="pending",
         )
         self.db.add(sync_log)
         self.db.commit()
@@ -136,48 +137,91 @@ class SyncService:
             # Store activity metadata
             sync_log.activity_name = activity.name
             # Extract activity type (stravalib 2.x uses Pydantic RootModel with root='Value' format)
-            activity_type_str = self.converter.extract_activity_type(activity.type) if activity.type else None
+            activity_type_str = (
+                self.converter.extract_activity_type(activity.type) if activity.type else None
+            )
             sync_log.activity_type = activity_type_str
 
             # Store debug data - convert Strava activity to dict for JSON storage
             try:
                 strava_dict = {}
                 # Safely extract each field
-                if hasattr(activity, 'id'): strava_dict["id"] = int(activity.id) if activity.id else None
-                if hasattr(activity, 'name'): strava_dict["name"] = str(activity.name) if activity.name else None
-                if hasattr(activity, 'type'): strava_dict["type"] = self.converter.extract_activity_type(activity.type) if activity.type else None
-                if hasattr(activity, 'sport_type'): strava_dict["sport_type"] = self.converter.extract_activity_type(activity.sport_type) if activity.sport_type else None
-                if hasattr(activity, 'distance'):
+                if hasattr(activity, "id"):
+                    strava_dict["id"] = int(activity.id) if activity.id else None
+                if hasattr(activity, "name"):
+                    strava_dict["name"] = str(activity.name) if activity.name else None
+                if hasattr(activity, "type"):
+                    strava_dict["type"] = (
+                        self.converter.extract_activity_type(activity.type)
+                        if activity.type
+                        else None
+                    )
+                if hasattr(activity, "sport_type"):
+                    strava_dict["sport_type"] = (
+                        self.converter.extract_activity_type(activity.sport_type)
+                        if activity.sport_type
+                        else None
+                    )
+                if hasattr(activity, "distance"):
                     try:
-                        strava_dict["distance"] = float(activity.distance) if activity.distance else None
-                    except: pass
-                if hasattr(activity, 'moving_time'):
+                        strava_dict["distance"] = (
+                            float(activity.distance) if activity.distance else None
+                        )
+                    except:
+                        pass
+                if hasattr(activity, "moving_time"):
                     try:
-                        strava_dict["moving_time"] = int(activity.moving_time.total_seconds()) if activity.moving_time else None
-                    except: pass
-                if hasattr(activity, 'elapsed_time'):
+                        strava_dict["moving_time"] = (
+                            int(activity.moving_time.total_seconds())
+                            if activity.moving_time
+                            else None
+                        )
+                    except:
+                        pass
+                if hasattr(activity, "elapsed_time"):
                     try:
-                        strava_dict["elapsed_time"] = int(activity.elapsed_time.total_seconds()) if activity.elapsed_time else None
-                    except: pass
-                if hasattr(activity, 'total_elevation_gain'):
+                        strava_dict["elapsed_time"] = (
+                            int(activity.elapsed_time.total_seconds())
+                            if activity.elapsed_time
+                            else None
+                        )
+                    except:
+                        pass
+                if hasattr(activity, "total_elevation_gain"):
                     try:
-                        strava_dict["total_elevation_gain"] = float(activity.total_elevation_gain) if activity.total_elevation_gain else None
-                    except: pass
-                if hasattr(activity, 'start_date'):
+                        strava_dict["total_elevation_gain"] = (
+                            float(activity.total_elevation_gain)
+                            if activity.total_elevation_gain
+                            else None
+                        )
+                    except:
+                        pass
+                if hasattr(activity, "start_date"):
                     try:
-                        strava_dict["start_date"] = activity.start_date.isoformat() if activity.start_date else None
-                    except: pass
-                if hasattr(activity, 'average_speed'):
+                        strava_dict["start_date"] = (
+                            activity.start_date.isoformat() if activity.start_date else None
+                        )
+                    except:
+                        pass
+                if hasattr(activity, "average_speed"):
                     try:
-                        strava_dict["average_speed"] = float(activity.average_speed) if activity.average_speed else None
-                    except: pass
-                if hasattr(activity, 'max_speed'):
+                        strava_dict["average_speed"] = (
+                            float(activity.average_speed) if activity.average_speed else None
+                        )
+                    except:
+                        pass
+                if hasattr(activity, "max_speed"):
                     try:
-                        strava_dict["max_speed"] = float(activity.max_speed) if activity.max_speed else None
-                    except: pass
+                        strava_dict["max_speed"] = (
+                            float(activity.max_speed) if activity.max_speed else None
+                        )
+                    except:
+                        pass
 
                 # Store all available attributes for debugging
-                strava_dict["_all_attributes"] = [attr for attr in dir(activity) if not attr.startswith('_')]
+                strava_dict["_all_attributes"] = [
+                    attr for attr in dir(activity) if not attr.startswith("_")
+                ]
 
                 sync_log.strava_data = strava_dict
                 logger.info(f"Stored Strava data with {len(strava_dict)} fields")
@@ -211,15 +255,29 @@ class SyncService:
 
             # Store FIT data summary for debugging (not the full binary data)
             if isinstance(fit_data, bytes):
-                num_points = len(streams.get("latlng").data) if "latlng" in streams and streams.get("latlng") else 0
+                num_points = (
+                    len(streams.get("latlng").data)
+                    if "latlng" in streams and streams.get("latlng")
+                    else 0
+                )
                 fit_summary = {
                     "format": "FIT",
                     "size_bytes": len(fit_data),
                     "num_gps_points": num_points,
                     "activity_type": activity_type_str,
-                    "sport": str(self.converter.map_activity_type_to_fit(activity_type_str)[0]).split('.')[-1],
-                    "duration_seconds": float(activity.moving_time) if hasattr(activity, 'moving_time') and activity.moving_time else None,
-                    "distance_meters": float(activity.distance) if hasattr(activity, 'distance') and activity.distance else None,
+                    "sport": str(
+                        self.converter.map_activity_type_to_fit(activity_type_str)[0]
+                    ).split(".")[-1],
+                    "duration_seconds": (
+                        float(activity.moving_time)
+                        if hasattr(activity, "moving_time") and activity.moving_time
+                        else None
+                    ),
+                    "distance_meters": (
+                        float(activity.distance)
+                        if hasattr(activity, "distance") and activity.distance
+                        else None
+                    ),
                 }
                 sync_log.gpx_data = str(fit_summary)
             else:
@@ -227,7 +285,7 @@ class SyncService:
             self.db.commit()
 
             # 5. Save to temporary file
-            with tempfile.NamedTemporaryFile(mode='wb', suffix='.fit', delete=False) as temp_file:
+            with tempfile.NamedTemporaryFile(mode="wb", suffix=".fit", delete=False) as temp_file:
                 temp_file.write(fit_data)
                 temp_file_path = temp_file.name
 
@@ -251,10 +309,10 @@ class SyncService:
                 # 8. Success!
                 # Try different possible keys for activity ID
                 garmin_activity_id = (
-                    upload_response.get("activity_id") or
-                    upload_response.get("activityId") or
-                    upload_response.get("id") or
-                    upload_response.get("activityID")
+                    upload_response.get("activity_id")
+                    or upload_response.get("activityId")
+                    or upload_response.get("id")
+                    or upload_response.get("activityID")
                 )
 
                 logger.info(f"Upload response keys: {list(upload_response.keys())}")
@@ -268,7 +326,7 @@ class SyncService:
                     sync_log,
                     "success",
                     result["message"],
-                    garmin_activity_id=str(garmin_activity_id) if garmin_activity_id else None
+                    garmin_activity_id=str(garmin_activity_id) if garmin_activity_id else None,
                 )
 
                 logger.info(f"Successfully synced activity {strava_activity_id} to Garmin")
@@ -298,11 +356,7 @@ class SyncService:
         return result
 
     def _update_sync_log(
-        self,
-        sync_log: SyncLog,
-        status: str,
-        message: str,
-        garmin_activity_id: Optional[str] = None
+        self, sync_log: SyncLog, status: str, message: str, garmin_activity_id: Optional[str] = None
     ):
         """Update sync log with result."""
         sync_log.status = status
@@ -311,6 +365,8 @@ class SyncService:
 
         if garmin_activity_id:
             sync_log.garmin_activity_id = garmin_activity_id
-            sync_log.target_activity_id = garmin_activity_id  # Set target_activity_id for new schema
+            sync_log.target_activity_id = (
+                garmin_activity_id  # Set target_activity_id for new schema
+            )
 
         self.db.commit()

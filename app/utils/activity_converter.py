@@ -1,19 +1,28 @@
 """
 Utility for converting Strava activity data to Garmin-compatible formats.
 """
+
+import tempfile
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
+
 import gpxpy
 import gpxpy.gpx
-from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional, Tuple
-import tempfile
-
 from fit_tool.fit_file_builder import FitFileBuilder
+from fit_tool.profile.messages.activity_message import ActivityMessage
 from fit_tool.profile.messages.file_id_message import FileIdMessage
-from fit_tool.profile.messages.session_message import SessionMessage
 from fit_tool.profile.messages.lap_message import LapMessage
 from fit_tool.profile.messages.record_message import RecordMessage
-from fit_tool.profile.messages.activity_message import ActivityMessage
-from fit_tool.profile.profile_type import Sport, SubSport, FileType, Manufacturer, Event, EventType, LapTrigger
+from fit_tool.profile.messages.session_message import SessionMessage
+from fit_tool.profile.profile_type import (
+    Event,
+    EventType,
+    FileType,
+    LapTrigger,
+    Manufacturer,
+    Sport,
+    SubSport,
+)
 
 
 class ActivityConverter:
@@ -39,12 +48,13 @@ class ActivityConverter:
         if "root=" in type_str and "'" in type_str:
             # Extract the value between quotes: root='EBikeRide' -> EBikeRide
             import re
+
             match = re.search(r"root='([^']+)'", type_str)
             if match:
                 return match.group(1)
 
         # Try to access .root attribute directly (for Pydantic RootModel)
-        if hasattr(activity_type, 'root'):
+        if hasattr(activity_type, "root"):
             return str(activity_type.root)
 
         # Otherwise return the string representation
@@ -83,9 +93,17 @@ class ActivityConverter:
         # Extract stream data - stravalib returns Stream objects, not dicts
         # Access the data attribute directly from Stream objects
         latlng = streams.get("latlng").data if "latlng" in streams and streams.get("latlng") else []
-        altitude = streams.get("altitude").data if "altitude" in streams and streams.get("altitude") else []
+        altitude = (
+            streams.get("altitude").data
+            if "altitude" in streams and streams.get("altitude")
+            else []
+        )
         time_data = streams.get("time").data if "time" in streams and streams.get("time") else []
-        heartrate = streams.get("heartrate").data if "heartrate" in streams and streams.get("heartrate") else []
+        heartrate = (
+            streams.get("heartrate").data
+            if "heartrate" in streams and streams.get("heartrate")
+            else []
+        )
 
         # Build track points
         for i, coords in enumerate(latlng):
@@ -97,7 +115,11 @@ class ActivityConverter:
                 latitude=lat,
                 longitude=lng,
                 elevation=altitude[i] if i < len(altitude) else None,
-                time=activity.start_date + timedelta(seconds=time_data[i]) if i < len(time_data) else None
+                time=(
+                    activity.start_date + timedelta(seconds=time_data[i])
+                    if i < len(time_data)
+                    else None
+                ),
             )
 
             # Add heart rate as extension if available
@@ -125,7 +147,6 @@ class ActivityConverter:
             "Run": (Sport.RUNNING, SubSport.GENERIC),
             "TrailRun": (Sport.RUNNING, SubSport.TRAIL),
             "VirtualRun": (Sport.RUNNING, SubSport.VIRTUAL_ACTIVITY),
-
             # Cycling activities
             "Ride": (Sport.CYCLING, SubSport.ROAD),
             "MountainBikeRide": (Sport.CYCLING, SubSport.MOUNTAIN),
@@ -135,15 +156,12 @@ class ActivityConverter:
             "EMountainBikeRide": (Sport.E_BIKING, SubSport.E_BIKE_MOUNTAIN),
             "Handcycle": (Sport.CYCLING, SubSport.HAND_CYCLING),
             "Velomobile": (Sport.CYCLING, SubSport.RECUMBENT),
-
             # Swimming activities
             "Swim": (Sport.SWIMMING, SubSport.LAP_SWIMMING),
             "OpenWaterSwim": (Sport.SWIMMING, SubSport.OPEN_WATER),
-
             # Walking/Hiking activities
             "Walk": (Sport.WALKING, SubSport.GENERIC),
             "Hike": (Sport.HIKING, SubSport.GENERIC),
-
             # Winter sports
             "AlpineSki": (Sport.ALPINE_SKIING, SubSport.GENERIC),
             "BackcountrySki": (Sport.ALPINE_SKIING, SubSport.BACKCOUNTRY),
@@ -151,7 +169,6 @@ class ActivityConverter:
             "Snowboard": (Sport.SNOWBOARDING, SubSport.GENERIC),
             "Snowshoe": (Sport.SNOWSHOEING, SubSport.GENERIC),
             "IceSkate": (Sport.ICE_SKATING, SubSport.GENERIC),
-
             # Water sports
             "Canoeing": (Sport.KAYAKING, SubSport.GENERIC),
             "Kayaking": (Sport.KAYAKING, SubSport.GENERIC),
@@ -160,7 +177,6 @@ class ActivityConverter:
             "StandUpPaddling": (Sport.STAND_UP_PADDLEBOARDING, SubSport.GENERIC),
             "Surfing": (Sport.SURFING, SubSport.GENERIC),
             "Windsurf": (Sport.WINDSURFING, SubSport.GENERIC),
-
             # Fitness activities
             "Workout": (Sport.FITNESS_EQUIPMENT, SubSport.CARDIO_TRAINING),
             "WeightTraining": (Sport.TRAINING, SubSport.STRENGTH_TRAINING),
@@ -170,7 +186,6 @@ class ActivityConverter:
             "Elliptical": (Sport.FITNESS_EQUIPMENT, SubSport.ELLIPTICAL),
             "StairStepper": (Sport.FLOOR_CLIMBING, SubSport.STAIR_CLIMBING),
             "RockClimbing": (Sport.ROCK_CLIMBING, SubSport.GENERIC),
-
             # Other sports
             "InlineSkate": (Sport.INLINE_SKATING, SubSport.GENERIC),
             "Golf": (Sport.GOLF, SubSport.GENERIC),
@@ -193,6 +208,7 @@ class ActivityConverter:
             FIT data as bytes
         """
         import logging
+
         logger = logging.getLogger(__name__)
 
         # Helper function to convert Duration/timedelta to seconds
@@ -202,13 +218,15 @@ class ActivityConverter:
             if duration is None:
                 return None
             # Try timedelta first (has total_seconds method)
-            if hasattr(duration, 'total_seconds') and callable(getattr(duration, 'total_seconds')):
+            if hasattr(duration, "total_seconds") and callable(getattr(duration, "total_seconds")):
                 return float(duration.total_seconds())
             # Duration is an integer subclass, just convert to float
             try:
                 return float(duration)
             except (TypeError, ValueError) as e:
-                logger.warning(f"Could not convert duration to seconds: {duration} (type: {type(duration)}), error: {e}")
+                logger.warning(
+                    f"Could not convert duration to seconds: {duration} (type: {type(duration)}), error: {e}"
+                )
                 return None
 
         # Convert datetime to Unix timestamp in milliseconds for fit_tool
@@ -228,16 +246,30 @@ class ActivityConverter:
             return round(dt.timestamp() * 1000)
 
         # Extract activity type
-        activity_type_str = ActivityConverter.extract_activity_type(activity.type) if activity.type else "Ride"
+        activity_type_str = (
+            ActivityConverter.extract_activity_type(activity.type) if activity.type else "Ride"
+        )
         sport, sub_sport = ActivityConverter.map_activity_type_to_fit(activity_type_str)
         logger.info(f"Activity type: {activity_type_str} -> Sport: {sport}, SubSport: {sub_sport}")
 
         # Extract stream data
         latlng = streams.get("latlng").data if "latlng" in streams and streams.get("latlng") else []
-        altitude = streams.get("altitude").data if "altitude" in streams and streams.get("altitude") else []
-        time_data_raw = streams.get("time").data if "time" in streams and streams.get("time") else []
-        heartrate = streams.get("heartrate").data if "heartrate" in streams and streams.get("heartrate") else []
-        cadence = streams.get("cadence").data if "cadence" in streams and streams.get("cadence") else []
+        altitude = (
+            streams.get("altitude").data
+            if "altitude" in streams and streams.get("altitude")
+            else []
+        )
+        time_data_raw = (
+            streams.get("time").data if "time" in streams and streams.get("time") else []
+        )
+        heartrate = (
+            streams.get("heartrate").data
+            if "heartrate" in streams and streams.get("heartrate")
+            else []
+        )
+        cadence = (
+            streams.get("cadence").data if "cadence" in streams and streams.get("cadence") else []
+        )
 
         # Convert time data to seconds (might be int, float, or timedelta)
         time_data = []
@@ -258,11 +290,16 @@ class ActivityConverter:
             # If it's a string or something else, try to parse it
             if isinstance(start_time, str):
                 from dateutil import parser
+
                 start_time = parser.parse(start_time)
             else:
-                raise ValueError(f"activity.start_date is not a datetime object: {type(start_time)}")
+                raise ValueError(
+                    f"activity.start_date is not a datetime object: {type(start_time)}"
+                )
 
-        logger.info(f"start_time after conversion - type: {type(start_time)}, value: {start_time}, tzinfo: {start_time.tzinfo}")
+        logger.info(
+            f"start_time after conversion - type: {type(start_time)}, value: {start_time}, tzinfo: {start_time.tzinfo}"
+        )
 
         # Test the timestamp conversion
         test_timestamp = datetime_to_fit_timestamp(start_time)
@@ -310,7 +347,7 @@ class ActivityConverter:
                 record.cadence = int(cadence[i])
 
             # Distance (meters)
-            if hasattr(activity, 'distance') and activity.distance and len(latlng) > 0:
+            if hasattr(activity, "distance") and activity.distance and len(latlng) > 0:
                 # Approximate distance based on position in stream
                 record.distance = float(activity.distance) * (i / len(latlng))
 
@@ -321,15 +358,29 @@ class ActivityConverter:
         if records:
             lap = LapMessage()
             # timestamps are already in milliseconds from records
-            lap.timestamp = records[-1].timestamp if records[-1].timestamp else datetime_to_fit_timestamp(start_time)
+            lap.timestamp = (
+                records[-1].timestamp
+                if records[-1].timestamp
+                else datetime_to_fit_timestamp(start_time)
+            )
             lap.start_time = datetime_to_fit_timestamp(start_time)
             lap.sport = sport
             lap.sub_sport = sub_sport
-            logger.info(f"Setting Lap: sport={sport} ({type(sport)}), sub_sport={sub_sport} ({type(sub_sport)})")
+            logger.info(
+                f"Setting Lap: sport={sport} ({type(sport)}), sub_sport={sub_sport} ({type(sub_sport)})"
+            )
             lap.total_elapsed_time = duration_to_seconds(activity.elapsed_time)
             lap.total_timer_time = duration_to_seconds(activity.moving_time)
-            lap.total_distance = float(activity.distance) if hasattr(activity, 'distance') and activity.distance else None
-            lap.total_calories = int(activity.calories) if hasattr(activity, 'calories') and activity.calories else None
+            lap.total_distance = (
+                float(activity.distance)
+                if hasattr(activity, "distance") and activity.distance
+                else None
+            )
+            lap.total_calories = (
+                int(activity.calories)
+                if hasattr(activity, "calories") and activity.calories
+                else None
+            )
 
             # Average/max heart rate
             if heartrate:
@@ -342,7 +393,7 @@ class ActivityConverter:
                 lap.max_cadence = int(max(cadence))
 
             # Elevation
-            if hasattr(activity, 'total_elevation_gain') and activity.total_elevation_gain:
+            if hasattr(activity, "total_elevation_gain") and activity.total_elevation_gain:
                 lap.total_ascent = int(activity.total_elevation_gain)
 
             lap.lap_trigger = LapTrigger.SESSION_END
@@ -350,15 +401,27 @@ class ActivityConverter:
 
         # 4. Session Message
         session = SessionMessage()
-        session.timestamp = records[-1].timestamp if records and records[-1].timestamp else datetime_to_fit_timestamp(start_time)
+        session.timestamp = (
+            records[-1].timestamp
+            if records and records[-1].timestamp
+            else datetime_to_fit_timestamp(start_time)
+        )
         session.start_time = datetime_to_fit_timestamp(start_time)
         session.sport = sport
         session.sub_sport = sub_sport
-        logger.info(f"Setting Session: sport={sport} ({type(sport)}), sub_sport={sub_sport} ({type(sub_sport)})")
+        logger.info(
+            f"Setting Session: sport={sport} ({type(sport)}), sub_sport={sub_sport} ({type(sub_sport)})"
+        )
         session.total_elapsed_time = duration_to_seconds(activity.elapsed_time)
         session.total_timer_time = duration_to_seconds(activity.moving_time)
-        session.total_distance = float(activity.distance) if hasattr(activity, 'distance') and activity.distance else None
-        session.total_calories = int(activity.calories) if hasattr(activity, 'calories') and activity.calories else None
+        session.total_distance = (
+            float(activity.distance)
+            if hasattr(activity, "distance") and activity.distance
+            else None
+        )
+        session.total_calories = (
+            int(activity.calories) if hasattr(activity, "calories") and activity.calories else None
+        )
 
         # Average/max heart rate
         if heartrate:
@@ -371,7 +434,7 @@ class ActivityConverter:
             session.max_cadence = int(max(cadence))
 
         # Elevation
-        if hasattr(activity, 'total_elevation_gain') and activity.total_elevation_gain:
+        if hasattr(activity, "total_elevation_gain") and activity.total_elevation_gain:
             session.total_ascent = int(activity.total_elevation_gain)
 
         builder.add(session)
@@ -390,13 +453,14 @@ class ActivityConverter:
         fit_file = builder.build()
 
         # Write to temporary file and read back as bytes
-        with tempfile.NamedTemporaryFile(suffix='.fit', delete=False) as temp_file:
+        with tempfile.NamedTemporaryFile(suffix=".fit", delete=False) as temp_file:
             fit_file.to_file(temp_file.name)
             temp_file.seek(0)
-            with open(temp_file.name, 'rb') as f:
+            with open(temp_file.name, "rb") as f:
                 fit_data = f.read()
 
         import os
+
         os.unlink(temp_file.name)
 
         return fit_data

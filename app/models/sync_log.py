@@ -1,9 +1,12 @@
 """
 Sync log model for tracking activity sync operations.
 """
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Text, JSON
-from sqlalchemy.orm import relationship
+
 from datetime import datetime
+
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import relationship
+
 from app.database import Base
 
 
@@ -13,13 +16,17 @@ class SyncLog(Base):
     __tablename__ = "sync_logs"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
 
     # Sync direction: "strava_to_garmin" or "garmin_to_strava"
     sync_direction = Column(String, nullable=False, default="strava_to_garmin", index=True)
 
     # Activity identifiers (flexible based on direction)
-    source_activity_id = Column(String, nullable=False, index=True)  # Strava ID or Garmin ID (based on direction)
+    source_activity_id = Column(
+        String, nullable=False, index=True
+    )  # Strava ID or Garmin ID (based on direction)
     target_activity_id = Column(String, nullable=True)  # Result ID from target platform
 
     # Legacy fields (kept for backwards compatibility)

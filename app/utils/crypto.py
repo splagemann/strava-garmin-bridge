@@ -1,7 +1,9 @@
 """
 Encryption utilities for securing sensitive data like Garmin credentials.
 """
+
 from cryptography.fernet import Fernet
+
 from app.config import settings
 
 

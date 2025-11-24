@@ -1,13 +1,16 @@
 """
 Strava API service for handling OAuth and activity operations.
 """
-from datetime import datetime, timedelta
-from typing import Dict, Any, Optional
-from stravalib.client import Client
-from sqlalchemy.orm import Session
-from app.models import User, StravaAuth
-from app.config import settings
+
 import logging
+from datetime import datetime, timedelta
+from typing import Any, Dict, Optional
+
+from sqlalchemy.orm import Session
+from stravalib.client import Client
+
+from app.config import settings
+from app.models import StravaAuth, User
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +39,7 @@ class StravaService:
         Returns:
             Tuple of (authorization_url, signed_state_token)
         """
-        from app.utils.jwt import generate_state_token, create_state_token
+        from app.utils.jwt import create_state_token, generate_state_token
 
         # Generate cryptographically secure random state
         state = generate_state_token()
@@ -50,7 +53,7 @@ class StravaService:
             client_id=settings.STRAVA_CLIENT_ID,
             redirect_uri=redirect_uri,
             scope=["read", "activity:read", "activity:read_all", "activity:write"],
-            state=state  # CSRF protection
+            state=state,  # CSRF protection
         )
         return url, signed_state
 
@@ -67,11 +70,13 @@ class StravaService:
         token_response = self.client.exchange_code_for_token(
             client_id=settings.STRAVA_CLIENT_ID,
             client_secret=settings.STRAVA_CLIENT_SECRET,
-            code=code
+            code=code,
         )
         return token_response
 
-    def save_auth(self, user: User, token_response: Dict[str, Any], athlete: Any = None) -> StravaAuth:
+    def save_auth(
+        self, user: User, token_response: Dict[str, Any], athlete: Any = None
+    ) -> StravaAuth:
         """
         Save Strava authentication data for a user.
 
@@ -84,9 +89,7 @@ class StravaService:
             Created or updated StravaAuth object
         """
         # Check if auth already exists
-        strava_auth = self.db.query(StravaAuth).filter(
-            StravaAuth.user_id == user.id
-        ).first()
+        strava_auth = self.db.query(StravaAuth).filter(StravaAuth.user_id == user.id).first()
 
         # Extract athlete ID
         if athlete:
@@ -112,7 +115,7 @@ class StravaService:
                 athlete_id=athlete_id,
                 access_token=token_response["access_token"],
                 refresh_token=token_response["refresh_token"],
-                expires_at=expires_at
+                expires_at=expires_at,
             )
             self.db.add(strava_auth)
 
@@ -157,7 +160,7 @@ class StravaService:
         token_response = self.client.refresh_access_token(
             client_id=settings.STRAVA_CLIENT_ID,
             client_secret=settings.STRAVA_CLIENT_SECRET,
-            refresh_token=strava_auth.refresh_token
+            refresh_token=strava_auth.refresh_token,
         )
 
         strava_auth.access_token = token_response["access_token"]
@@ -216,10 +219,7 @@ class StravaService:
             return None
 
     def list_recent_activities(
-        self,
-        user: User,
-        after: Optional[datetime] = None,
-        limit: int = 50
+        self, user: User, after: Optional[datetime] = None, limit: int = 50
     ) -> list[Any]:
         """
         List recent activities for a user.
@@ -250,7 +250,7 @@ class StravaService:
         file_path: str,
         activity_type: Optional[str] = None,
         name: Optional[str] = None,
-        description: Optional[str] = None
+        description: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Upload activity file (FIT, GPX, or TCX) to Strava.
@@ -271,8 +271,8 @@ class StravaService:
             return None
 
         try:
-            import time
             import os
+            import time
 
             if not os.path.exists(file_path):
                 logger.error(f"Activity file does not exist: {file_path}")
@@ -282,18 +282,18 @@ class StravaService:
 
             # Determine file format from extension
             file_ext = os.path.splitext(file_path)[1].lower()
-            if file_ext not in ['.fit', '.gpx', '.tcx']:
+            if file_ext not in [".fit", ".gpx", ".tcx"]:
                 logger.error(f"Unsupported file format: {file_ext}")
                 return None
 
             # Upload file to Strava
-            with open(file_path, 'rb') as f:
+            with open(file_path, "rb") as f:
                 uploader = client.upload_activity(
                     activity_file=f,
                     data_type=file_ext[1:],  # Remove the dot: 'fit', 'gpx', or 'tcx'
                     activity_type=activity_type,
                     name=name,
-                    description=description
+                    description=description,
                 )
 
             logger.info(f"Upload initiated, waiting for processing...")
@@ -305,48 +305,32 @@ class StravaService:
 
                 # Check if the returned object is an ActivityUploader (error/timeout case)
                 # or a DetailedActivity (success case)
-                if hasattr(activity, 'id') and not hasattr(activity, 'upload_id'):
+                if hasattr(activity, "id") and not hasattr(activity, "upload_id"):
                     # This is a DetailedActivity with an id attribute
                     logger.info(f"Upload successful! Activity ID: {activity.id}")
-                    return {
-                        "success": True,
-                        "activity_id": str(activity.id)
-                    }
-                elif hasattr(uploader, 'activity_id') and uploader.activity_id:
+                    return {"success": True, "activity_id": str(activity.id)}
+                elif hasattr(uploader, "activity_id") and uploader.activity_id:
                     # Sometimes the uploader object has the activity_id even if wait() didn't return it
                     logger.info(f"Upload successful! Activity ID: {uploader.activity_id}")
-                    return {
-                        "success": True,
-                        "activity_id": str(uploader.activity_id)
-                    }
+                    return {"success": True, "activity_id": str(uploader.activity_id)}
                 else:
                     logger.error("Upload completed but no activity ID returned")
                     return {
                         "success": False,
-                        "error": "Upload completed but no activity ID returned"
+                        "error": "Upload completed but no activity ID returned",
                     }
 
             except Exception as wait_error:
                 # Check if uploader has error information
-                if hasattr(uploader, 'is_error') and uploader.is_error:
+                if hasattr(uploader, "is_error") and uploader.is_error:
                     error_msg = f"Upload failed during processing: {wait_error}"
                     logger.error(error_msg)
-                    return {
-                        "success": False,
-                        "error": error_msg
-                    }
+                    return {"success": False, "error": error_msg}
                 else:
                     # Timeout or other error
                     logger.warning(f"Upload timeout or error: {wait_error}")
-                    return {
-                        "success": False,
-                        "error": f"Upload timeout: {str(wait_error)}"
-                    }
+                    return {"success": False, "error": f"Upload timeout: {str(wait_error)}"}
 
         except Exception as e:
             logger.error(f"Error uploading activity to Strava: {e}", exc_info=True)
-            return {
-                "success": False,
-                "error": str(e)
-            }
-
+            return {"success": False, "error": str(e)}

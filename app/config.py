@@ -1,9 +1,11 @@
 """
 Application configuration using Pydantic Settings.
 """
-from pydantic_settings import BaseSettings
-from pydantic import ConfigDict
+
 from functools import lru_cache
+
+from pydantic import ConfigDict
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -32,10 +34,7 @@ class Settings(BaseSettings):
     # API Configuration
     API_V1_PREFIX: str = "/api/v1"
 
-    model_config = ConfigDict(
-        env_file=".env",
-        case_sensitive=True
-    )
+    model_config = ConfigDict(env_file=".env", case_sensitive=True)
 
 
 @lru_cache()

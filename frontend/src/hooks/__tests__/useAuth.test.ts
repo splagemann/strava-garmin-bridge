@@ -3,6 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { useAuth } from '../useAuth';
 import { createTestQueryClient } from '../../test/test-utils';
 import { QueryClientProvider } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
 import * as api from '../../api';
 
 // Mock the API
@@ -14,7 +15,7 @@ vi.mock('../../api', () => ({
 }));
 
 describe('useAuth', () => {
-  const wrapper = ({ children }: { children: React.ReactNode }) => (
+  const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={createTestQueryClient()}>
       {children}
     </QueryClientProvider>
