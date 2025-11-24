@@ -1,14 +1,17 @@
 """
 Activity filter management routes.
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from pydantic import BaseModel, ConfigDict
-from typing import List, Optional
-from app.database import get_db
-from app.models import User, ActivityFilter
-from app.middleware.auth import get_current_user
+
 import logging
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.middleware.auth import get_current_user
+from app.models import ActivityFilter, User
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -16,6 +19,7 @@ router = APIRouter()
 
 class FilterCreate(BaseModel):
     """Request model for creating a filter."""
+
     filter_type: str  # "include" or "exclude"
     filter_field: str = "name"  # "name" or "type" - field to match against
     pattern: str
@@ -25,6 +29,7 @@ class FilterCreate(BaseModel):
 
 class FilterUpdate(BaseModel):
     """Request model for updating a filter."""
+
     filter_type: Optional[str] = None
     filter_field: Optional[str] = None
     pattern: Optional[str] = None
@@ -34,6 +39,7 @@ class FilterUpdate(BaseModel):
 
 class FilterResponse(BaseModel):
     """Response model for filter."""
+
     id: int
     filter_type: str
     filter_field: str
@@ -46,17 +52,14 @@ class FilterResponse(BaseModel):
 
 @router.get("/", response_model=List[FilterResponse])
 async def list_filters(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     """
     List all activity filters for the authenticated user.
 
     Requires: Bearer token authentication
     """
-    filters = db.query(ActivityFilter).filter(
-        ActivityFilter.user_id == current_user.id
-    ).all()
+    filters = db.query(ActivityFilter).filter(ActivityFilter.user_id == current_user.id).all()
 
     return filters
 
@@ -65,7 +68,7 @@ async def list_filters(
 async def create_filter(
     filter_data: FilterCreate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Create a new activity filter for the authenticated user.
@@ -76,16 +79,12 @@ async def create_filter(
         # Validate filter type
         if filter_data.filter_type not in ["include", "exclude"]:
             raise HTTPException(
-                status_code=400,
-                detail="filter_type must be 'include' or 'exclude'"
+                status_code=400, detail="filter_type must be 'include' or 'exclude'"
             )
 
         # Validate filter field
         if filter_data.filter_field not in ["name", "type"]:
-            raise HTTPException(
-                status_code=400,
-                detail="filter_field must be 'name' or 'type'"
-            )
+            raise HTTPException(status_code=400, detail="filter_field must be 'name' or 'type'")
 
         # Create filter
         activity_filter = ActivityFilter(
@@ -94,7 +93,7 @@ async def create_filter(
             filter_field=filter_data.filter_field,
             pattern=filter_data.pattern,
             is_regex=filter_data.is_regex,
-            active=filter_data.active
+            active=filter_data.active,
         )
 
         db.add(activity_filter)
@@ -115,19 +114,18 @@ async def create_filter(
 
 @router.get("/{filter_id}", response_model=FilterResponse)
 async def get_filter(
-    filter_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    filter_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     """
     Get a specific filter by ID for the authenticated user.
 
     Requires: Bearer token authentication
     """
-    activity_filter = db.query(ActivityFilter).filter(
-        ActivityFilter.id == filter_id,
-        ActivityFilter.user_id == current_user.id
-    ).first()
+    activity_filter = (
+        db.query(ActivityFilter)
+        .filter(ActivityFilter.id == filter_id, ActivityFilter.user_id == current_user.id)
+        .first()
+    )
 
     if not activity_filter:
         raise HTTPException(status_code=404, detail="Filter not found")
@@ -140,7 +138,7 @@ async def update_filter(
     filter_id: int,
     filter_data: FilterUpdate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Update an existing filter for the authenticated user.
@@ -148,10 +146,11 @@ async def update_filter(
     Requires: Bearer token authentication
     """
     try:
-        activity_filter = db.query(ActivityFilter).filter(
-            ActivityFilter.id == filter_id,
-            ActivityFilter.user_id == current_user.id
-        ).first()
+        activity_filter = (
+            db.query(ActivityFilter)
+            .filter(ActivityFilter.id == filter_id, ActivityFilter.user_id == current_user.id)
+            .first()
+        )
 
         if not activity_filter:
             raise HTTPException(status_code=404, detail="Filter not found")
@@ -160,17 +159,13 @@ async def update_filter(
         if filter_data.filter_type is not None:
             if filter_data.filter_type not in ["include", "exclude"]:
                 raise HTTPException(
-                    status_code=400,
-                    detail="filter_type must be 'include' or 'exclude'"
+                    status_code=400, detail="filter_type must be 'include' or 'exclude'"
                 )
             activity_filter.filter_type = filter_data.filter_type
 
         if filter_data.filter_field is not None:
             if filter_data.filter_field not in ["name", "type"]:
-                raise HTTPException(
-                    status_code=400,
-                    detail="filter_field must be 'name' or 'type'"
-                )
+                raise HTTPException(status_code=400, detail="filter_field must be 'name' or 'type'")
             activity_filter.filter_field = filter_data.filter_field
 
         if filter_data.pattern is not None:
@@ -199,9 +194,7 @@ async def update_filter(
 
 @router.delete("/{filter_id}")
 async def delete_filter(
-    filter_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    filter_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     """
     Delete a filter for the authenticated user.
@@ -209,10 +202,11 @@ async def delete_filter(
     Requires: Bearer token authentication
     """
     try:
-        activity_filter = db.query(ActivityFilter).filter(
-            ActivityFilter.id == filter_id,
-            ActivityFilter.user_id == current_user.id
-        ).first()
+        activity_filter = (
+            db.query(ActivityFilter)
+            .filter(ActivityFilter.id == filter_id, ActivityFilter.user_id == current_user.id)
+            .first()
+        )
 
         if not activity_filter:
             raise HTTPException(status_code=404, detail="Filter not found")

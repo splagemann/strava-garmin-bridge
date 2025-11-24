@@ -1,9 +1,12 @@
 """
 Authentication models for Strava and Garmin.
 """
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
-from sqlalchemy.orm import relationship
+
 from datetime import datetime
+
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import relationship
+
 from app.database import Base
 
 
@@ -13,7 +16,9 @@ class StravaAuth(Base):
     __tablename__ = "strava_auth"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
     athlete_id = Column(String, unique=True, index=True, nullable=False)
     access_token = Column(String, nullable=False)
     refresh_token = Column(String, nullable=False)
@@ -34,7 +39,9 @@ class GarminAuth(Base):
     __tablename__ = "garmin_auth"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
 
     # Encrypted credentials
     encrypted_email = Column(Text, nullable=False)

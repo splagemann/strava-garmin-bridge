@@ -1,16 +1,18 @@
 """
 Sync service for orchestrating activity synchronization from Garmin to Strava.
 """
-from sqlalchemy.orm import Session
-from typing import Dict, Any, Optional
-from datetime import datetime, timedelta, timezone
-import tempfile
-import os
-import logging
 
-from app.models import User, ActivityFilter, SyncLog
-from app.services.strava_service import StravaService
+import logging
+import os
+import tempfile
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, Optional
+
+from sqlalchemy.orm import Session
+
+from app.models import ActivityFilter, SyncLog, User
 from app.services.garmin_service import GarminService
+from app.services.strava_service import StravaService
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +33,9 @@ class GarminToStravaSyncService:
         self.strava_service = StravaService(db)
         self.garmin_service = GarminService(db)
 
-    def should_sync_activity(self, activity_name: str, activity_type: Optional[str] = None) -> tuple[bool, Optional[str]]:
+    def should_sync_activity(
+        self, activity_name: str, activity_type: Optional[str] = None
+    ) -> tuple[bool, Optional[str]]:
         """
         Check if activity should be synced based on user filters.
 
@@ -43,10 +47,11 @@ class GarminToStravaSyncService:
             Tuple of (should_sync: bool, skip_reason: Optional[str])
         """
         # Get active filters for user
-        filters = self.db.query(ActivityFilter).filter(
-            ActivityFilter.user_id == self.user.id,
-            ActivityFilter.active == True
-        ).all()
+        filters = (
+            self.db.query(ActivityFilter)
+            .filter(ActivityFilter.user_id == self.user.id, ActivityFilter.active == True)
+            .all()
+        )
 
         # If no filters, sync all activities by default
         if not filters:
@@ -57,12 +62,13 @@ class GarminToStravaSyncService:
 
         # Check each filter
         import re
+
         for filter_rule in filters:
             pattern = filter_rule.pattern
             matches = False
 
             # Determine which field to match against
-            filter_field = getattr(filter_rule, 'filter_field', 'name')
+            filter_field = getattr(filter_rule, "filter_field", "name")
             if filter_field == "type" and activity_type:
                 match_value = activity_type
             else:
@@ -104,26 +110,38 @@ class GarminToStravaSyncService:
             Existing SyncLog if found, None otherwise
         """
         # Check if already synced Garmin→Strava (any status - don't retry failed/skipped activities)
-        existing_sync = self.db.query(SyncLog).filter(
-            SyncLog.user_id == self.user.id,
-            SyncLog.sync_direction == "garmin_to_strava",
-            SyncLog.source_activity_id == str(garmin_activity_id)
-        ).first()
+        existing_sync = (
+            self.db.query(SyncLog)
+            .filter(
+                SyncLog.user_id == self.user.id,
+                SyncLog.sync_direction == "garmin_to_strava",
+                SyncLog.source_activity_id == str(garmin_activity_id),
+            )
+            .first()
+        )
 
         if existing_sync:
-            logger.info(f"Activity {garmin_activity_id} already in sync log with status '{existing_sync.status}'")
+            logger.info(
+                f"Activity {garmin_activity_id} already in sync log with status '{existing_sync.status}'"
+            )
             return existing_sync
 
         # Check if this Garmin activity was originally synced FROM Strava (prevent ping-pong)
-        reverse_sync = self.db.query(SyncLog).filter(
-            SyncLog.user_id == self.user.id,
-            SyncLog.sync_direction == "strava_to_garmin",
-            SyncLog.target_activity_id == str(garmin_activity_id),
-            SyncLog.status == "success"
-        ).first()
+        reverse_sync = (
+            self.db.query(SyncLog)
+            .filter(
+                SyncLog.user_id == self.user.id,
+                SyncLog.sync_direction == "strava_to_garmin",
+                SyncLog.target_activity_id == str(garmin_activity_id),
+                SyncLog.status == "success",
+            )
+            .first()
+        )
 
         if reverse_sync:
-            logger.info(f"Activity {garmin_activity_id} was originally from Strava (preventing ping-pong)")
+            logger.info(
+                f"Activity {garmin_activity_id} was originally from Strava (preventing ping-pong)"
+            )
             return reverse_sync
 
         return None
@@ -133,7 +151,7 @@ class GarminToStravaSyncService:
         garmin_activity_id: str,
         force_sync: bool = False,
         skip_date_filter: bool = False,
-        activity_data: Optional[Dict[str, Any]] = None
+        activity_data: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Sync a single activity from Garmin to Strava.
@@ -147,11 +165,7 @@ class GarminToStravaSyncService:
         Returns:
             Dictionary with sync result
         """
-        result = {
-            "status": "failed",
-            "garmin_activity_id": garmin_activity_id,
-            "message": ""
-        }
+        result = {"status": "failed", "garmin_activity_id": garmin_activity_id, "message": ""}
 
         # Check for duplicate sync (skip if force_sync is True)
         if not force_sync:
@@ -159,7 +173,9 @@ class GarminToStravaSyncService:
             if existing_sync:
                 result["status"] = "skipped"
                 if existing_sync.sync_direction == "strava_to_garmin":
-                    result["message"] = "Activity originally from Strava (preventing ping-pong sync)"
+                    result["message"] = (
+                        "Activity originally from Strava (preventing ping-pong sync)"
+                    )
                 else:
                     result["message"] = "Activity already synced to Strava"
                 result["sync_log_id"] = existing_sync.id
@@ -172,7 +188,7 @@ class GarminToStravaSyncService:
             source_activity_id=str(garmin_activity_id),
             # Keep legacy fields for backward compatibility
             strava_activity_id="",  # Will be updated after successful upload
-            status="pending"
+            status="pending",
         )
         self.db.add(sync_log)
         self.db.commit()
@@ -231,17 +247,18 @@ class GarminToStravaSyncService:
             should_sync, skip_reason = self.should_sync_activity(activity_name, activity_type)
             if not should_sync:
                 result["status"] = "skipped"
-                result["message"] = skip_reason or f"Activity '{activity_name}' filtered out by user rules"
+                result["message"] = (
+                    skip_reason or f"Activity '{activity_name}' filtered out by user rules"
+                )
                 self._update_sync_log(sync_log, "skipped", result["message"])
                 logger.info(result["message"])
                 return result
 
             # 4. Download original FIT file from Garmin
             logger.info(f"Downloading original FIT file for activity {garmin_activity_id}")
-            temp_file_path = tempfile.mktemp(suffix='.fit')
+            temp_file_path = tempfile.mktemp(suffix=".fit")
             fit_file_path = self.garmin_service.download_activity_original(
-                garmin_activity_id,
-                temp_file_path
+                garmin_activity_id, temp_file_path
             )
 
             if not fit_file_path or not os.path.exists(fit_file_path):
@@ -260,7 +277,7 @@ class GarminToStravaSyncService:
                 user=self.user,
                 file_path=fit_file_path,
                 name=activity_name,
-                description="Synced from Garmin"
+                description="Synced from Garmin",
             )
 
             if not upload_result or not upload_result.get("success"):
@@ -280,10 +297,12 @@ class GarminToStravaSyncService:
                 sync_log,
                 "success",
                 result["message"],
-                strava_activity_id=str(strava_activity_id) if strava_activity_id else None
+                strava_activity_id=str(strava_activity_id) if strava_activity_id else None,
             )
 
-            logger.info(f"Successfully synced activity {garmin_activity_id} to Strava (ID: {strava_activity_id})")
+            logger.info(
+                f"Successfully synced activity {garmin_activity_id} to Strava (ID: {strava_activity_id})"
+            )
 
         except Exception as e:
             error_msg = f"Error syncing activity: {str(e)}"
@@ -313,11 +332,7 @@ class GarminToStravaSyncService:
         return result
 
     def _update_sync_log(
-        self,
-        sync_log: SyncLog,
-        status: str,
-        message: str,
-        strava_activity_id: Optional[str] = None
+        self, sync_log: SyncLog, status: str, message: str, strava_activity_id: Optional[str] = None
     ) -> None:
         """
         Update sync log with final status.

@@ -1,13 +1,16 @@
 """
 Garmin Connect service for authentication and activity upload.
 """
+
+import json
+import logging
+from typing import Any, Dict, Optional
+
 from garminconnect import Garmin, GarminConnectAuthenticationError, GarminConnectConnectionError
 from sqlalchemy.orm import Session
-from typing import Optional, Dict, Any
-from app.models import User, GarminAuth
-from app.utils.crypto import encrypt, decrypt
-import logging
-import json
+
+from app.models import GarminAuth, User
+from app.utils.crypto import decrypt, encrypt
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +45,7 @@ class GarminService:
         encrypted_password = encrypt(password)
 
         # Check if auth already exists
-        garmin_auth = self.db.query(GarminAuth).filter(
-            GarminAuth.user_id == user.id
-        ).first()
+        garmin_auth = self.db.query(GarminAuth).filter(GarminAuth.user_id == user.id).first()
 
         if garmin_auth:
             # Update existing auth
@@ -55,7 +56,7 @@ class GarminService:
             garmin_auth = GarminAuth(
                 user_id=user.id,
                 encrypted_email=encrypted_email,
-                encrypted_password=encrypted_password
+                encrypted_password=encrypted_password,
             )
             self.db.add(garmin_auth)
 
@@ -86,7 +87,9 @@ class GarminService:
             # Try to restore session from database
             if garmin_auth.session_data:
                 try:
-                    logger.info(f"Attempting to restore Garmin session from database for user {user.id}")
+                    logger.info(
+                        f"Attempting to restore Garmin session from database for user {user.id}"
+                    )
                     # Initialize Garmin client
                     self.client = Garmin()
 
@@ -129,7 +132,9 @@ class GarminService:
             logger.error(f"Error connecting to Garmin for user {user.id}: {e}", exc_info=True)
             return False
 
-    def upload_activity(self, file_path: str, activity_format: str = ".gpx") -> Optional[Dict[str, Any]]:
+    def upload_activity(
+        self, file_path: str, activity_format: str = ".gpx"
+    ) -> Optional[Dict[str, Any]]:
         """
         Upload activity file to Garmin Connect.
 
@@ -147,6 +152,7 @@ class GarminService:
         try:
             # Verify file exists
             import os
+
             if not os.path.exists(file_path):
                 logger.error(f"Activity file does not exist: {file_path}")
                 return None
@@ -163,7 +169,7 @@ class GarminService:
             # Response format varies, could be dict or object with activity_id
             if isinstance(upload_response, dict):
                 return upload_response
-            elif hasattr(upload_response, '__dict__'):
+            elif hasattr(upload_response, "__dict__"):
                 # Convert object to dict
                 return vars(upload_response)
             else:
@@ -196,8 +202,7 @@ class GarminService:
             # Use get_activities_by_date to fetch activities from start_date to today
             logger.info(f"Fetching Garmin activities from {start_date} onwards")
             activities = self.client.get_activities_by_date(
-                startdate=start_date,
-                enddate=None  # None means up to today
+                startdate=start_date, enddate=None  # None means up to today
             )
 
             if activities:
@@ -232,7 +237,9 @@ class GarminService:
                 logger.info(f"Fetching activity {activity_id} using get_activity()")
                 activity = self.client.get_activity(activity_id)
                 if activity:
-                    logger.info(f"Successfully fetched activity {activity_id}: {activity.get('activityName', 'Unknown')}")
+                    logger.info(
+                        f"Successfully fetched activity {activity_id}: {activity.get('activityName', 'Unknown')}"
+                    )
                     return activity
             except Exception as e:
                 logger.warning(f"get_activity() failed for {activity_id}: {e}")
@@ -242,7 +249,9 @@ class GarminService:
                 logger.info(f"Fetching activity {activity_id} using get_activity_details()")
                 activity = self.client.get_activity_details(activity_id)
                 if activity:
-                    logger.info(f"Successfully fetched activity details {activity_id}: {activity.get('activityName', 'Unknown')}")
+                    logger.info(
+                        f"Successfully fetched activity details {activity_id}: {activity.get('activityName', 'Unknown')}"
+                    )
                     return activity
             except Exception as e:
                 logger.warning(f"get_activity_details() failed for {activity_id}: {e}")
@@ -271,14 +280,16 @@ class GarminService:
             return None
 
         try:
-            import zipfile
             import io
             import os
+            import zipfile
 
             logger.info(f"Downloading original activity file for activity {activity_id}")
 
             # Download activity in ORIGINAL format (returns zip file bytes)
-            zip_data = self.client.download_activity(activity_id, dl_fmt=self.client.ActivityDownloadFormat.ORIGINAL)
+            zip_data = self.client.download_activity(
+                activity_id, dl_fmt=self.client.ActivityDownloadFormat.ORIGINAL
+            )
 
             if not zip_data:
                 logger.error(f"No data returned for activity {activity_id}")
@@ -287,7 +298,7 @@ class GarminService:
             # Extract FIT file from zip
             with zipfile.ZipFile(io.BytesIO(zip_data)) as zip_file:
                 # Find FIT file in zip (usually there's only one)
-                fit_files = [f for f in zip_file.namelist() if f.lower().endswith('.fit')]
+                fit_files = [f for f in zip_file.namelist() if f.lower().endswith(".fit")]
 
                 if not fit_files:
                     logger.error(f"No FIT file found in downloaded zip for activity {activity_id}")
@@ -301,7 +312,7 @@ class GarminService:
 
                 # Save to output path
                 os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                with open(output_path, 'wb') as f:
+                with open(output_path, "wb") as f:
                     f.write(fit_data)
 
                 logger.info(f"Saved FIT file to {output_path} ({len(fit_data)} bytes)")

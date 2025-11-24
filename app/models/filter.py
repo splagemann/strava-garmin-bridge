@@ -1,9 +1,12 @@
 """
 Activity filter model.
 """
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime
-from sqlalchemy.orm import relationship
+
 from datetime import datetime
+
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy.orm import relationship
+
 from app.database import Base
 
 
@@ -13,11 +16,15 @@ class ActivityFilter(Base):
     __tablename__ = "activity_filters"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
 
     # Filter configuration
     filter_type = Column(String, nullable=False)  # "include" or "exclude"
-    filter_field = Column(String, nullable=False, default="name")  # "name" or "type" - field to match against
+    filter_field = Column(
+        String, nullable=False, default="name"
+    )  # "name" or "type" - field to match against
     pattern = Column(String, nullable=False)  # Text pattern or regex
     is_regex = Column(Boolean, default=False)  # Whether pattern is a regex
     active = Column(Boolean, default=True)  # Whether filter is enabled

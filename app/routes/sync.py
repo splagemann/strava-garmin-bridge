@@ -1,17 +1,20 @@
 """
 Sync management routes.
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from pydantic import BaseModel, ConfigDict
-from typing import List, Optional
-from datetime import datetime
-from app.database import get_db
-from app.models import User, SyncLog
-from app.services.sync_service import SyncService
-from app.services.garmin_to_strava_sync_service import GarminToStravaSyncService
-from app.middleware.auth import get_current_user
+
 import logging
+from datetime import datetime
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.middleware.auth import get_current_user
+from app.models import SyncLog, User
+from app.services.garmin_to_strava_sync_service import GarminToStravaSyncService
+from app.services.sync_service import SyncService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -19,16 +22,19 @@ router = APIRouter()
 
 class SyncRequest(BaseModel):
     """Request model for manual sync (Strava to Garmin)."""
+
     strava_activity_id: str  # String to handle 64-bit IDs safely in JS
 
 
 class GarminSyncRequest(BaseModel):
     """Request model for manual sync (Garmin to Strava)."""
+
     garmin_activity_id: str
 
 
 class SyncLogResponse(BaseModel):
     """Response model for sync log."""
+
     id: int
     sync_direction: str
     source_activity_id: str
@@ -51,6 +57,7 @@ class SyncLogDetailResponse(BaseModel):
     Note: Sensitive fields like session_data and raw GPX data are excluded
     for security reasons as they may contain credentials or precise location data.
     """
+
     id: int
     sync_direction: str
     source_activity_id: str
@@ -71,7 +78,7 @@ class SyncLogDetailResponse(BaseModel):
 async def manual_sync(
     sync_request: SyncRequest,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Manually trigger sync for a specific Strava activity (Strava → Garmin).
@@ -94,8 +101,7 @@ async def manual_sync(
         # Convert string ID to int for service layer
         activity_id = int(sync_request.strava_activity_id)
         result = sync_service.sync_activity(
-            activity_id,
-            force_sync=True  # Always sync for manual requests
+            activity_id, force_sync=True  # Always sync for manual requests
         )
 
         return result
@@ -112,7 +118,7 @@ async def manual_sync(
 async def manual_sync_garmin_to_strava(
     sync_request: GarminSyncRequest,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Manually trigger sync for a specific Garmin activity (Garmin → Strava).
@@ -135,8 +141,8 @@ async def manual_sync_garmin_to_strava(
         sync_service = GarminToStravaSyncService(db, user)
         result = sync_service.sync_activity(
             sync_request.garmin_activity_id,
-            force_sync=True,      # Always sync for manual requests
-            skip_date_filter=True  # Support old activities up to 90 days
+            force_sync=True,  # Always sync for manual requests
+            skip_date_filter=True,  # Support old activities up to 90 days
         )
 
         return result
@@ -153,8 +159,10 @@ async def sync_history(
     limit: int = Query(50, description="Maximum number of logs to return"),
     offset: int = Query(0, description="Number of logs to skip"),
     status: Optional[str] = Query(None, description="Filter by status"),
-    direction: Optional[str] = Query(None, description="Filter by sync direction (strava_to_garmin or garmin_to_strava)"),
-    db: Session = Depends(get_db)
+    direction: Optional[str] = Query(
+        None, description="Filter by sync direction (strava_to_garmin or garmin_to_strava)"
+    ),
+    db: Session = Depends(get_db),
 ):
     """
     Get sync history for the authenticated user.
@@ -173,7 +181,7 @@ async def sync_history(
         if direction not in ["strava_to_garmin", "garmin_to_strava"]:
             raise HTTPException(
                 status_code=400,
-                detail="Invalid direction. Must be: strava_to_garmin or garmin_to_strava"
+                detail="Invalid direction. Must be: strava_to_garmin or garmin_to_strava",
             )
         query = query.filter(SyncLog.sync_direction == direction)
 
@@ -188,19 +196,18 @@ async def sync_history(
 
 @router.get("/history/{sync_log_id}", response_model=SyncLogResponse)
 async def get_sync_log(
-    sync_log_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    sync_log_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     """
     Get details of a specific sync log for the authenticated user.
 
     Requires: Bearer token authentication
     """
-    sync_log = db.query(SyncLog).filter(
-        SyncLog.id == sync_log_id,
-        SyncLog.user_id == current_user.id
-    ).first()
+    sync_log = (
+        db.query(SyncLog)
+        .filter(SyncLog.id == sync_log_id, SyncLog.user_id == current_user.id)
+        .first()
+    )
 
     if not sync_log:
         raise HTTPException(status_code=404, detail="Sync log not found")
@@ -210,19 +217,18 @@ async def get_sync_log(
 
 @router.get("/history/{sync_log_id}/details", response_model=SyncLogDetailResponse)
 async def get_sync_log_details(
-    sync_log_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    sync_log_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     """
     Get detailed sync log for debugging (sensitive data excluded for security).
 
     Requires: Bearer token authentication
     """
-    sync_log = db.query(SyncLog).filter(
-        SyncLog.id == sync_log_id,
-        SyncLog.user_id == current_user.id
-    ).first()
+    sync_log = (
+        db.query(SyncLog)
+        .filter(SyncLog.id == sync_log_id, SyncLog.user_id == current_user.id)
+        .first()
+    )
 
     if not sync_log:
         raise HTTPException(status_code=404, detail="Sync log not found")
@@ -232,9 +238,7 @@ async def get_sync_log_details(
 
 @router.post("/history/{sync_log_id}/retry")
 async def retry_sync(
-    sync_log_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    sync_log_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     """
     Retry a failed sync for the authenticated user (supports both directions).
@@ -242,10 +246,11 @@ async def retry_sync(
     Requires: Bearer token authentication
     """
     # Get sync log
-    sync_log = db.query(SyncLog).filter(
-        SyncLog.id == sync_log_id,
-        SyncLog.user_id == current_user.id
-    ).first()
+    sync_log = (
+        db.query(SyncLog)
+        .filter(SyncLog.id == sync_log_id, SyncLog.user_id == current_user.id)
+        .first()
+    )
 
     if not sync_log:
         raise HTTPException(status_code=404, detail="Sync log not found")
@@ -261,15 +266,12 @@ async def retry_sync(
             result = sync_service.sync_activity(
                 sync_log.source_activity_id,
                 force_sync=True,
-                skip_date_filter=True  # Allow retry of old activities
+                skip_date_filter=True,  # Allow retry of old activities
             )
         else:
             # Strava → Garmin retry (default/legacy)
             sync_service = SyncService(db, current_user)
-            result = sync_service.sync_activity(
-                int(sync_log.strava_activity_id),
-                force_sync=True
-            )
+            result = sync_service.sync_activity(int(sync_log.strava_activity_id), force_sync=True)
 
         return result
 
@@ -280,10 +282,7 @@ async def retry_sync(
 
 
 @router.get("/stats")
-async def sync_stats(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
+async def sync_stats(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """
     Get sync statistics for the authenticated user.
 
@@ -291,33 +290,34 @@ async def sync_stats(
     """
     # Count logs by status
     total = db.query(SyncLog).filter(SyncLog.user_id == current_user.id).count()
-    success = db.query(SyncLog).filter(
-        SyncLog.user_id == current_user.id,
-        SyncLog.status == "success"
-    ).count()
-    failed = db.query(SyncLog).filter(
-        SyncLog.user_id == current_user.id,
-        SyncLog.status == "failed"
-    ).count()
-    skipped = db.query(SyncLog).filter(
-        SyncLog.user_id == current_user.id,
-        SyncLog.status == "skipped"
-    ).count()
+    success = (
+        db.query(SyncLog)
+        .filter(SyncLog.user_id == current_user.id, SyncLog.status == "success")
+        .count()
+    )
+    failed = (
+        db.query(SyncLog)
+        .filter(SyncLog.user_id == current_user.id, SyncLog.status == "failed")
+        .count()
+    )
+    skipped = (
+        db.query(SyncLog)
+        .filter(SyncLog.user_id == current_user.id, SyncLog.status == "skipped")
+        .count()
+    )
 
     return {
         "total": total,
         "success": success,
         "failed": failed,
         "skipped": skipped,
-        "success_rate": (success / total * 100) if total > 0 else 0
+        "success_rate": (success / total * 100) if total > 0 else 0,
     }
 
 
 @router.delete("/history/{sync_log_id}")
 async def delete_sync_log(
-    sync_log_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    sync_log_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     """
     Delete a specific sync log entry for the authenticated user.
@@ -326,10 +326,11 @@ async def delete_sync_log(
     """
     try:
         # Get sync log with user authorization
-        sync_log = db.query(SyncLog).filter(
-            SyncLog.id == sync_log_id,
-            SyncLog.user_id == current_user.id
-        ).first()
+        sync_log = (
+            db.query(SyncLog)
+            .filter(SyncLog.id == sync_log_id, SyncLog.user_id == current_user.id)
+            .first()
+        )
 
         if not sync_log:
             raise HTTPException(status_code=404, detail="Sync log not found")
@@ -354,10 +355,16 @@ async def delete_sync_log(
 @router.delete("/history")
 async def bulk_delete_sync_logs(
     current_user: User = Depends(get_current_user),
-    status: Optional[str] = Query(None, description="Delete only logs with this status (success/failed/skipped/pending)"),
-    before_date: Optional[datetime] = Query(None, description="Delete logs created before this date (ISO format)"),
-    strava_activity_id: Optional[str] = Query(None, description="Delete logs for specific Strava activity ID"),
-    db: Session = Depends(get_db)
+    status: Optional[str] = Query(
+        None, description="Delete only logs with this status (success/failed/skipped/pending)"
+    ),
+    before_date: Optional[datetime] = Query(
+        None, description="Delete logs created before this date (ISO format)"
+    ),
+    strava_activity_id: Optional[str] = Query(
+        None, description="Delete logs for specific Strava activity ID"
+    ),
+    db: Session = Depends(get_db),
 ):
     """
     Bulk delete sync logs for the authenticated user with optional filters.
@@ -378,7 +385,7 @@ async def bulk_delete_sync_logs(
             if status not in ["success", "failed", "skipped", "pending"]:
                 raise HTTPException(
                     status_code=400,
-                    detail="Invalid status. Must be: success, failed, skipped, or pending"
+                    detail="Invalid status. Must be: success, failed, skipped, or pending",
                 )
             query = query.filter(SyncLog.status == status)
 
@@ -392,21 +399,17 @@ async def bulk_delete_sync_logs(
         count = query.count()
 
         if count == 0:
-            return {
-                "message": "No sync logs found matching the criteria",
-                "deleted_count": 0
-            }
+            return {"message": "No sync logs found matching the criteria", "deleted_count": 0}
 
         # Delete matching logs
         query.delete(synchronize_session=False)
         db.commit()
 
-        logger.info(f"Bulk deleted {count} sync logs for user {current_user.id} (status={status}, before_date={before_date}, strava_activity_id={strava_activity_id})")
+        logger.info(
+            f"Bulk deleted {count} sync logs for user {current_user.id} (status={status}, before_date={before_date}, strava_activity_id={strava_activity_id})"
+        )
 
-        return {
-            "message": f"Successfully deleted {count} sync log(s)",
-            "deleted_count": count
-        }
+        return {"message": f"Successfully deleted {count} sync log(s)", "deleted_count": count}
 
     except HTTPException:
         # Re-raise HTTP exceptions as-is
