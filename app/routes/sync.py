@@ -19,7 +19,7 @@ router = APIRouter()
 
 class SyncRequest(BaseModel):
     """Request model for manual sync (Strava to Garmin)."""
-    strava_activity_id: int
+    strava_activity_id: str  # String to handle 64-bit IDs safely in JS
 
 
 class GarminSyncRequest(BaseModel):
@@ -91,13 +91,17 @@ async def manual_sync(
     # Perform sync
     try:
         sync_service = SyncService(db, user)
+        # Convert string ID to int for service layer
+        activity_id = int(sync_request.strava_activity_id)
         result = sync_service.sync_activity(
-            sync_request.strava_activity_id,
+            activity_id,
             force_sync=True  # Always sync for manual requests
         )
 
         return result
 
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid activity ID format")
     except Exception as e:
         db.rollback()
         logger.error(f"Error during manual sync: {e}", exc_info=True)

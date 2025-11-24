@@ -82,15 +82,31 @@ async def get_garmin_activities(
         for activity in activities[:limit]:  # Ensure we only return requested limit
             # Parse date - handle both formats from Garmin API
             start_date_str = activity.get('startTimeLocal') or activity.get('beginTimestamp')
-            try:
-                # Try ISO format first
-                if 'T' in start_date_str:
-                    start_date = datetime.fromisoformat(start_date_str.replace('Z', '+00:00'))
-                else:
-                    # Try simple format
-                    start_date = datetime.strptime(start_date_str, '%Y-%m-%d %H:%M:%S')
-            except Exception as e:
-                logger.warning(f"Failed to parse date {start_date_str}: {e}")
+
+            # Safely handle None, numeric, or malformed date values
+            if start_date_str is None:
+                logger.warning(f"Activity {activity.get('activityId')} missing date fields, using current time")
+                start_date = datetime.utcnow()
+            elif isinstance(start_date_str, (int, float)):
+                # Handle timestamp in milliseconds (Garmin sometimes uses this)
+                try:
+                    start_date = datetime.fromtimestamp(start_date_str / 1000)
+                except Exception as e:
+                    logger.warning(f"Failed to parse numeric timestamp {start_date_str}: {e}")
+                    start_date = datetime.utcnow()
+            elif isinstance(start_date_str, str):
+                try:
+                    # Try ISO format first
+                    if 'T' in start_date_str:
+                        start_date = datetime.fromisoformat(start_date_str.replace('Z', '+00:00'))
+                    else:
+                        # Try simple format
+                        start_date = datetime.strptime(start_date_str, '%Y-%m-%d %H:%M:%S')
+                except Exception as e:
+                    logger.warning(f"Failed to parse date string {start_date_str}: {e}")
+                    start_date = datetime.utcnow()
+            else:
+                logger.warning(f"Unexpected date type {type(start_date_str)} for activity {activity.get('activityId')}")
                 start_date = datetime.utcnow()
 
             # Extract activity type

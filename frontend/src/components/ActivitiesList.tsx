@@ -77,8 +77,8 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
     setSyncingActivityId(activity.id);
     try {
       if (activity.source === 'strava') {
-        // Sync Strava to Garmin
-        const result = await syncApi.manualSync({ strava_activity_id: parseInt(activity.id) });
+        // Sync Strava to Garmin - keep ID as string to safely handle 64-bit IDs
+        const result = await syncApi.manualSync({ strava_activity_id: activity.id });
         if (result.status === 'success') {
           toast.success('Activity synced to Garmin!');
         } else {

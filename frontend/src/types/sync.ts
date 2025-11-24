@@ -22,12 +22,12 @@ export interface SyncStats {
 }
 
 export interface ManualSyncRequest {
-  strava_activity_id: number;
+  strava_activity_id: string;  // String to safely handle 64-bit Strava IDs in JavaScript
 }
 
 export interface ManualSyncResponse {
   status: string;
-  strava_activity_id: number;
+  strava_activity_id: string;  // String to safely handle 64-bit IDs
   message: string;
   garmin_activity_id?: string;
 }

@@ -18,7 +18,8 @@ export default function DashboardPage() {
   const handleManualSync = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await manualSync({ strava_activity_id: parseInt(stravaActivityId) });
+      // Keep ID as string to safely handle 64-bit Strava IDs
+      await manualSync({ strava_activity_id: stravaActivityId });
       toast.success('Activity synced successfully!');
       setStravaActivityId('');
       refetch();
@@ -109,11 +110,13 @@ export default function DashboardPage() {
               <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Sync from Strava to Garmin</h2>
               <form onSubmit={handleManualSync} className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                 <input
-                  type="number"
+                  type="text"
                   placeholder="Strava Activity ID"
                   value={stravaActivityId}
                   onChange={(e) => setStravaActivityId(e.target.value)}
                   required
+                  pattern="[0-9]+"
+                  title="Please enter a valid numeric activity ID"
                   className="flex-1 px-3 sm:px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-sm sm:text-base"
                 />
                 <button
