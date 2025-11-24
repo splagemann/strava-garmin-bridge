@@ -168,6 +168,13 @@ jobs:
           alembic upgrade head
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: test-secret-key-for-ci
+          ENCRYPTION_KEY: BP67TC-RR8iT2t0ubohSl3S_N_QBOCB1wm3kQysAJdY=
+          STRAVA_CLIENT_ID: test-client-id
+          STRAVA_CLIENT_SECRET: test-client-secret
+          BASE_URL: http://localhost:8000
+          FRONTEND_URL: http://localhost:5173
 
       - name: Run integration tests
         run: |
