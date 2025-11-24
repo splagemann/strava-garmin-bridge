@@ -88,8 +88,8 @@ def test_user_with_strava(test_db: Session, test_user: User) -> User:
         user_id=test_user.id,
         access_token="test_strava_access_token",
         refresh_token="test_strava_refresh_token",
-        expires_at=int((datetime.utcnow() + timedelta(hours=6)).timestamp()),
-        athlete_id=123456,
+        expires_at=datetime.utcnow() + timedelta(hours=6),
+        athlete_id="123456",
     )
     test_db.add(strava_auth)
     test_db.commit()
@@ -102,8 +102,8 @@ def test_user_with_garmin(test_db: Session, test_user: User) -> User:
     """Create a test user with Garmin authentication."""
     garmin_auth = GarminAuth(
         user_id=test_user.id,
-        email=encrypt("garmin@example.com"),
-        password=encrypt("garmin_password"),
+        encrypted_email=encrypt("garmin@example.com"),
+        encrypted_password=encrypt("garmin_password"),
     )
     test_db.add(garmin_auth)
     test_db.commit()
@@ -116,8 +116,8 @@ def test_user_full(test_db: Session, test_user_with_strava: User) -> User:
     """Create a test user with both Strava and Garmin authentication."""
     garmin_auth = GarminAuth(
         user_id=test_user_with_strava.id,
-        email=encrypt("garmin@example.com"),
-        password=encrypt("garmin_password"),
+        encrypted_email=encrypt("garmin@example.com"),
+        encrypted_password=encrypt("garmin_password"),
     )
     test_db.add(garmin_auth)
     test_db.commit()
@@ -132,14 +132,14 @@ def test_activity_filters(test_db: Session, test_user: User) -> list[ActivityFil
         ActivityFilter(
             user_id=test_user.id,
             filter_type="include",
-            field="name",
+            filter_field="name",
             pattern="Morning Run",
             is_regex=False,
         ),
         ActivityFilter(
             user_id=test_user.id,
             filter_type="exclude",
-            field="type",
+            filter_field="type",
             pattern="Virtual.*",
             is_regex=True,
         ),
