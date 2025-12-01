@@ -190,12 +190,11 @@ async def get_strava_activities(
         # Initialize Strava service
         strava_service = StravaService(db)
 
-        # Get activities from the last 30 days
-        from datetime import datetime, timedelta
-
-        after = datetime.utcnow() - timedelta(days=30)
-
-        activities = strava_service.list_recent_activities(user, after=after, limit=limit)
+        # Get recent activities
+        # Note: We don't use 'after' parameter because stravalib/Strava API with 'limit'
+        # and 'after' returns the OLDEST activities after that date.
+        # By omitting 'after', we get the most recent activities.
+        activities = strava_service.list_recent_activities(user, limit=limit)
 
         if activities is None:
             raise HTTPException(status_code=500, detail="Failed to fetch Strava activities")
