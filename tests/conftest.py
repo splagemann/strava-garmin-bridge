@@ -8,13 +8,22 @@ from typing import Generator
 from unittest.mock import MagicMock
 
 import pytest
+
+# Set up test environment variables BEFORE importing app modules
+os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+os.environ["STRAVA_CLIENT_ID"] = "test_client_id"
+os.environ["STRAVA_CLIENT_SECRET"] = "test_client_secret"
+os.environ["ENCRYPTION_KEY"] = "ErLrWG6--TBdTB1AXExGO-NhkVelVXIKf29OtFTNHTY="
+os.environ["SECRET_KEY"] = "test_secret_key"
+os.environ["REDIS_URL"] = "redis://localhost:6379/0"  # Mocked anyway
+
+# Add parent directory to path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
-
-# Add parent directory to path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from app.database import Base, get_db
 from app.main import app
