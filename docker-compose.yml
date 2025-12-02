@@ -29,7 +29,7 @@ services:
 
   # FastAPI Web Application
     build: ./backend
-    command: uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - ./backend:/backend
     ports:
@@ -54,7 +54,7 @@ services:
   # Celery Worker
   celery:
     build: ./backend
-    command: celery -A backend.app.celery_app worker --loglevel=info
+    command: celery -A app.celery_app worker --loglevel=info
     volumes:
       - ./backend:/backend
     environment:
@@ -78,7 +78,7 @@ services:
   celery-beat:
     build: ./backend
     entrypoint: ["/bin/sh", "-c"]
-    command: ["rm -f /backend/app/celerybeat-schedule* && /docker-entrypoint.sh celery -A backend.app.celery_app beat --loglevel=info"]
+    command: ["rm -f /backend/celerybeat-schedule* && /docker-entrypoint.sh celery -A app.celery_app beat --loglevel=info"]
     volumes:
       - ./backend:/backend
     environment:

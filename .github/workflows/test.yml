@@ -49,8 +49,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
+          pip install -r backend/requirements.txt
+          pip install -r backend/requirements-dev.txt
 
       # Linting disabled for testing PR - will be addressed in separate PR
       # - name: Run linting
@@ -61,7 +61,8 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          pytest --cov=backend/app --cov-report=xml --cov-report=term -v
+          cd backend
+          pytest --cov=app --cov-report=xml --cov-report=term -v
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
           REDIS_URL: redis://localhost:6379/0
@@ -76,7 +77,7 @@ jobs:
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          file: ./coverage.xml
+          file: ./backend/coverage.xml
           flags: backend
           name: backend-coverage
           fail_ci_if_error: false

@@ -79,7 +79,7 @@ services:
     image: ghcr.io/${GITHUB_REPO:-splagemann/strava-garmin-bridge}/backend:${IMAGE_TAG:-latest}
     container_name: strava-garmin-celery-worker
     restart: unless-stopped
-    command: celery -A backend.app.celery_app worker --loglevel=info
+    command: celery -A app.celery_app worker --loglevel=info
     depends_on:
       db:
         condition: service_healthy
@@ -114,7 +114,7 @@ services:
     container_name: strava-garmin-celery-beat
     restart: unless-stopped
     entrypoint: ["/bin/sh", "-c"]
-    command: ["rm -f /backend/app/celerybeat-schedule* && /backend/docker-entrypoint.sh celery -A backend.app.celery_app beat --loglevel=info"]
+    command: ["rm -f /backend/celerybeat-schedule* && /docker-entrypoint.sh celery -A app.celery_app beat --loglevel=info"]
     depends_on:
       db:
         condition: service_healthy
