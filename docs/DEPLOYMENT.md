@@ -459,6 +459,6 @@ redis:
 
 ## Support
 
-- **Documentation**: [README.md](README.md)
+- **Documentation**: [README.md](../README.md)
 - **Issues**: [GitHub Issues](https://github.com/splagemann/strava-garmin-bridge/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/splagemann/strava-garmin-bridge/discussions)

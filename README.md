@@ -33,14 +33,14 @@ Automatically sync your activities from Strava to Garmin Connect with customizab
 
 For production deployment using pre-built Docker images from GitHub Container Registry:
 
-📖 **See [DEPLOYMENT.md](DEPLOYMENT.md)** for complete production deployment instructions including:
+📖 **See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** for complete production deployment instructions including:
 - Using pre-built Docker images
 - Setting up reverse proxy (Nginx/Traefik)
 - SSL/TLS configuration
 - Monitoring and backups
 - Security best practices
 
-📖 **See [UPGRADE.md](UPGRADE.md)** for upgrade instructions and rollback procedures.
+📖 **See [docs/UPGRADE.md](docs/UPGRADE.md)** for upgrade instructions and rollback procedures.
 
 ## Quick Start with Docker (Development)
 
@@ -331,12 +331,12 @@ Pre-commit hooks will validate your commit messages automatically.
 
 ### Documentation
 
-- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment guide
-- **[CONFIGURATION.md](CONFIGURATION.md)** - Environment variables and configuration guide
-- **[UPGRADE.md](UPGRADE.md)** - Upgrade and rollback instructions
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Full contributing guidelines
-- **[PRE_COMMIT_SETUP.md](PRE_COMMIT_SETUP.md)** - Pre-commit hooks setup and usage
-- **[DOCKER_WORKFLOW.md](DOCKER_WORKFLOW.md)** - Docker image publishing workflow
+- **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Production deployment guide
+- **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)** - Environment variables and configuration guide
+- **[docs/UPGRADE.md](docs/UPGRADE.md)** - Upgrade and rollback instructions
+- **[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)** - Full contributing guidelines
+- **[docs/PRE_COMMIT_SETUP.md](docs/PRE_COMMIT_SETUP.md)** - Pre-commit hooks setup and usage
+- **[docs/DOCKER_WORKFLOW.md](docs/DOCKER_WORKFLOW.md)** - Docker image publishing workflow
 
 ## License
 

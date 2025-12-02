@@ -494,7 +494,7 @@ If you encounter issues:
 
 1. Check the logs
 2. Review this setup guide
-3. Check the README.md
+3. Check the ../README.md
 4. Look for similar issues on GitHub
 5. Create a new issue with:
    - Error messages

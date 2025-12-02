@@ -325,7 +325,7 @@ def sync_activity(
 
 ### README Updates
 
-Update README.md if you:
+Update ../README.md if you:
 - Add new features
 - Change configuration options
 - Modify setup process
@@ -351,7 +351,7 @@ strava-garmin-bridge/
 
 ## Getting Help
 
-- **Documentation**: Check README.md and docs/
+- **Documentation**: Check ../README.md and ./
 - **Issues**: Browse existing GitHub issues
 - **Discussions**: Start a GitHub discussion
 - **Chat**: [Your chat platform, if any]
