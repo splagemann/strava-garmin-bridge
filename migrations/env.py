@@ -11,9 +11,9 @@ import sys
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from app.database import Base
-from app.config import settings
-from app.models import *  # Import all models
+from backend.app.database import Base
+from backend.app.config import settings
+from backend.app.models import *  # Import all models
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

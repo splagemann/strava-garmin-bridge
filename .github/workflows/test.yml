@@ -55,13 +55,13 @@ jobs:
       # Linting disabled for testing PR - will be addressed in separate PR
       # - name: Run linting
       #   run: |
-      #     black --check app/
-      #     isort --check-only app/
-      #     flake8 app/ --max-line-length=100 --ignore=E203,W503
+      #     black --check backend/app/
+      #     isort --check-only backend/app/
+      #     flake8 backend/app/ --max-line-length=100 --ignore=E203,W503
 
       - name: Run tests with coverage
         run: |
-          pytest --cov=app --cov-report=xml --cov-report=term -v
+          pytest --cov=backend/app --cov-report=xml --cov-report=term -v
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
           REDIS_URL: redis://localhost:6379/0

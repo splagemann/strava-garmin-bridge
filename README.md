@@ -108,13 +108,13 @@ In separate terminals:
 
 ```bash
 # Terminal 1: Web server
-uvicorn app.main:app --reload
+uvicorn backend.app.main:app --reload
 
 # Terminal 2: Celery worker
-celery -A app.celery_app worker --loglevel=info
+celery -A backend.app.celery_app worker --loglevel=info
 
 # Terminal 3: Celery beat (scheduled polling every 5 minutes)
-celery -A app.celery_app beat --loglevel=info
+celery -A backend.app.celery_app beat --loglevel=info
 
 # Terminal 4: Redis (if not running as service)
 redis-server
@@ -137,7 +137,7 @@ redis-server
 - A Celery beat schedule polls Strava every 5 minutes for activities from the last 7 days
 - Previously synced activities are automatically skipped (no duplicates)
 - Ensures no activities are missed even if the service is temporarily down
-- Ensure `celery -A app.celery_app beat` is running (Docker Compose already includes a `celery-beat` service)
+- Ensure `celery -A backend.app.celery_app beat` is running (Docker Compose already includes a `celery-beat` service)
 - Activities are automatically filtered based on your configured patterns before syncing
 
 ## Usage
@@ -178,30 +178,31 @@ Interactive API documentation is available at:
 
 ```
 strava-garmin-bridge/
-├── app/                     # Backend (FastAPI)
-│   ├── __init__.py
-│   ├── main.py              # FastAPI application
-│   ├── config.py            # Configuration
-│   ├── database.py          # Database setup
-│   ├── celery_app.py        # Celery configuration
-│   ├── models/              # Database models
-│   │   ├── user.py
-│   │   ├── auth.py
-│   │   ├── filter.py
-│   │   └── sync_log.py
-│   ├── routes/              # API routes
-│   │   ├── auth.py
-│   │   ├── filters.py
-│   │   └── sync.py
-│   ├── services/            # Business logic
-│   │   ├── strava_service.py
-│   │   ├── garmin_service.py
-│   │   └── sync_service.py
-│   ├── tasks/               # Celery tasks
-│   │   └── sync_tasks.py
-│   └── utils/               # Utilities
-│       ├── crypto.py
-│       └── activity_converter.py
+├── backend/                 # Backend (FastAPI)
+│   ├── app/                 # FastAPI application
+│   │   ├── __init__.py
+│   │   ├── main.py
+│   │   ├── config.py
+│   │   ├── database.py
+│   │   ├── celery_app.py
+│   │   ├── models/              # Database models
+│   │   │   ├── user.py
+│   │   │   ├── auth.py
+│   │   │   ├── filter.py
+│   │   │   └── sync_log.py
+│   │   ├── routes/              # API routes
+│   │   │   ├── auth.py
+│   │   │   ├── filters.py
+│   │   │   └── sync.py
+│   │   ├── services/            # Business logic
+│   │   │   ├── strava_service.py
+│   │   │   ├── garmin_service.py
+│   │   │   └── sync_service.py
+│   │   ├── tasks/               # Celery tasks
+│   │   │   └── sync_tasks.py
+│   │   └── utils/               # Utilities
+│   │       ├── crypto.py
+│   │       └── activity_converter.py
 ├── frontend/                # Frontend (React + Vite)
 │   ├── src/                 # React source code
 │   ├── public/              # Static assets
@@ -293,8 +294,8 @@ alembic upgrade head
 ### Code formatting
 ```bash
 # Backend
-black app/
-isort app/
+black backend/app/
+isort backend/app/
 
 # Frontend
 cd frontend

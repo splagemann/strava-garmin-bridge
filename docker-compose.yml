@@ -28,11 +28,10 @@ services:
       retries: 5
 
   # FastAPI Web Application
-  web:
-    build: .
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    build: ./backend
+    command: uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
-      - .:/app
+      - ./backend:/backend
     ports:
       - "8000:8000"
     environment:
@@ -54,10 +53,10 @@ services:
 
   # Celery Worker
   celery:
-    build: .
-    command: celery -A app.celery_app worker --loglevel=info
+    build: ./backend
+    command: celery -A backend.app.celery_app worker --loglevel=info
     volumes:
-      - .:/app
+      - ./backend:/backend
     environment:
       - DATABASE_URL=postgresql://strava_garmin:changeme@db:5432/strava_garmin_sync
       - REDIS_URL=redis://redis:6379/0
@@ -77,11 +76,11 @@ services:
 
   # Celery Beat (for scheduled tasks)
   celery-beat:
-    build: .
+    build: ./backend
     entrypoint: ["/bin/sh", "-c"]
-    command: ["rm -f /app/celerybeat-schedule* && /docker-entrypoint.sh celery -A app.celery_app beat --loglevel=info"]
+    command: ["rm -f /backend/app/celerybeat-schedule* && /docker-entrypoint.sh celery -A backend.app.celery_app beat --loglevel=info"]
     volumes:
-      - .:/app
+      - ./backend:/backend
     environment:
       - DATABASE_URL=postgresql://strava_garmin:changeme@db:5432/strava_garmin_sync
       - REDIS_URL=redis://redis:6379/0
