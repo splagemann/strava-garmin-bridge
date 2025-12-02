@@ -71,11 +71,10 @@ docker-compose up -d
 ```bash
 docker-compose ps
 docker-compose logs -f web
-docker-compose logs -f frontend
 ```
+# Note: The frontend is no longer managed by Docker Compose. Please run it separately using `npm run dev` as described in the "Frontend Development" section.
 
 Services will be available at:
-- **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:8000
 - **API Docs**: http://localhost:8000/docs
 

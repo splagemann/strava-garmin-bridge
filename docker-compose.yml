@@ -99,18 +99,5 @@ services:
       redis:
         condition: service_healthy
 
-  # Frontend (React + Vite)
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        - VITE_API_URL=${BASE_URL:-http://localhost:8000}
-    ports:
-      - "3000:80"
-    depends_on:
-      - web
-    restart: unless-stopped
-
 volumes:
   postgres_data:

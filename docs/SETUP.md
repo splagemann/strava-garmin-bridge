@@ -128,6 +128,7 @@ LOG_LEVEL=INFO
 ```bash
 docker compose up -d
 ```
+# Note: This will start the backend services. The frontend needs to be started separately as described in the "Frontend Development" section of the README.md.
 
 **Note:** Use `docker compose` (space) not `docker-compose` (hyphen) for newer Docker versions.
 
