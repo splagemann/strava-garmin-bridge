@@ -49,7 +49,7 @@ For production deployment using pre-built Docker images from GitHub Container Re
 cd strava-garmin-bridge
 ```
 
-2. **Create environment file**
+2. **Create environment file (for Docker Compose)**
 ```bash
 cp backend/.env.example .env
 ```
@@ -90,7 +90,7 @@ pip install -r backend/requirements.txt
 createdb strava_garmin_sync
 ```
 
-3. **Configure environment**
+3. **Configure environment (for Manual Setup)**
 ```bash
 cp backend/.env.example backend/.env
 # Edit backend/.env with your configuration

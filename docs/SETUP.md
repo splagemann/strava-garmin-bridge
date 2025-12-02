@@ -9,9 +9,9 @@ Step-by-step guide to get your Strava-Garmin Sync Bridge up and running.
 pip install cryptography
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 
-# 2. Configure environment
-cp .env.example .env
-# Edit .env with your Strava API credentials and encryption key
+2. **Configure environment**
+cp backend/.env.example .env
+# Edit the root .env with your Strava API credentials and encryption key
 
 # 3. Start services
 docker compose up -d
