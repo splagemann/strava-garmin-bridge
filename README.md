@@ -51,7 +51,7 @@ cd strava-garmin-bridge
 
 2. **Create environment file**
 ```bash
-cp .env.example .env
+cp backend/.env.example .env
 ```
 
 3. **Edit `.env` and configure:**
@@ -83,7 +83,7 @@ Services will be available at:
 
 1. **Install dependencies**
 ```bash
-pip install -r requirements.txt
+pip install -r backend/requirements.txt
 ```
 
 2. **Set up PostgreSQL**
@@ -93,13 +93,15 @@ createdb strava_garmin_sync
 
 3. **Configure environment**
 ```bash
-cp .env.example .env
-# Edit .env with your configuration
+cp backend/.env.example backend/.env
+# Edit backend/.env with your configuration
 ```
 
 4. **Run database migrations**
 ```bash
+cd backend
 alembic upgrade head
+cd ..
 ```
 
 5. **Start services**
@@ -108,6 +110,7 @@ In separate terminals:
 
 ```bash
 # Terminal 1: Web server
+# Make sure you are in the root directory and have the virtual environment activated
 uvicorn backend.app.main:app --reload
 
 # Terminal 2: Celery worker
@@ -186,23 +189,15 @@ strava-garmin-bridge/
 │   │   ├── database.py
 │   │   ├── celery_app.py
 │   │   ├── models/              # Database models
-│   │   │   ├── user.py
-│   │   │   ├── auth.py
-│   │   │   ├── filter.py
-│   │   │   └── sync_log.py
 │   │   ├── routes/              # API routes
-│   │   │   ├── auth.py
-│   │   │   ├── filters.py
-│   │   │   └── sync.py
 │   │   ├── services/            # Business logic
-│   │   │   ├── strava_service.py
-│   │   │   ├── garmin_service.py
-│   │   │   └── sync_service.py
 │   │   ├── tasks/               # Celery tasks
-│   │   │   └── sync_tasks.py
 │   │   └── utils/               # Utilities
-│   │       ├── crypto.py
-│   │       └── activity_converter.py
+│   ├── migrations/          # Database migrations
+│   ├── tests/               # Tests
+│   ├── Dockerfile           # Backend Docker image
+│   ├── docker-entrypoint.sh # Entrypoint script
+│   └── requirements.txt     # Python dependencies
 ├── frontend/                # Frontend (React + Vite)
 │   ├── src/                 # React source code
 │   ├── public/              # Static assets
@@ -210,10 +205,7 @@ strava-garmin-bridge/
 │   ├── nginx.conf           # Nginx configuration
 │   ├── package.json         # Node dependencies
 │   └── vite.config.ts       # Vite configuration
-├── migrations/              # Database migrations
-├── tests/                   # Tests
-├── requirements.txt         # Python dependencies
-├── Dockerfile               # Backend Docker image
+├── docs/                    # Documentation
 ├── docker-compose.yml       # Docker services
 ├── .env.example             # Environment template
 └── README.md                # This file
@@ -279,12 +271,14 @@ The frontend will be available at http://localhost:5173 and will proxy API reque
 
 ### Running tests
 ```bash
+cd backend
 pytest tests/
 ```
 
 ### Database migrations
 ```bash
 # Create migration
+cd backend
 alembic revision --autogenerate -m "description"
 
 # Apply migration
@@ -318,7 +312,7 @@ We welcome contributions! Please follow these guidelines:
 
 ### Commit Message Format
 
-This project uses conventional commits for automatic changelog generation:
+This project uses conventional commits:
 
 ```bash
 # Examples

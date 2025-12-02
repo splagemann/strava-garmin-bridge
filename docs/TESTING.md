@@ -33,13 +33,13 @@ The project uses a comprehensive testing strategy covering:
 Install test dependencies:
 
 ```bash
-pip install -r requirements-dev.txt
+pip install -r backend/requirements-dev.txt
 ```
 
 ### Test Structure
 
 ```
-tests/
+backend/tests/
 ├── conftest.py              # Global fixtures and configuration
 ├── fixtures/
 │   ├── activity_data.py     # Mock activity data factories
@@ -142,6 +142,7 @@ def test_should_sync_activity_with_filters(test_db, test_user):
 
 ```bash
 # Run all tests
+cd backend
 pytest
 
 # Run with coverage
@@ -269,6 +270,7 @@ npm test -- hooks/__tests__/useAuth.test.ts
 
 **Backend:**
 ```bash
+cd backend
 pytest --cov=app --cov-report=html
 open htmlcov/index.html
 ```
@@ -348,11 +350,13 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
+          pip install -r backend/requirements.txt
+          pip install -r backend/requirements-dev.txt
 
       - name: Run tests
-        run: pytest --cov=app --cov-report=xml
+        run: |
+          cd backend
+          pytest --cov=app --cov-report=xml
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost/test_db
           REDIS_URL: redis://localhost:6379/0

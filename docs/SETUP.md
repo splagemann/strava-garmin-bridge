@@ -89,7 +89,7 @@ cd strava-garmin-bridge
 
 2. **Create environment file**
 ```bash
-cp .env.example .env
+cp backend/.env.example .env
 ```
 
 3. **Edit `.env` file**
@@ -172,7 +172,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 2. **Install dependencies**
 ```bash
-pip install -r requirements.txt
+pip install -r backend/requirements.txt
 ```
 
 3. **Start PostgreSQL and Redis**
@@ -187,19 +187,21 @@ pip install -r requirements.txt
 createdb strava_garmin_sync
 
 # Run migrations to create tables
+cd backend
 alembic upgrade head
+cd ..
 ```
 
 5. **Start services in separate terminals**
 
 Terminal 1 - Web Server:
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Terminal 2 - Celery Worker:
 ```bash
-celery -A app.celery_app worker --loglevel=info
+celery -A backend.app.celery_app worker --loglevel=info
 ```
 
 ## Step 6: Connect Your Accounts
