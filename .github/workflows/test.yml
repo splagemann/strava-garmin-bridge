@@ -205,12 +205,12 @@ jobs:
 
       - name: Test Docker Compose build
         run: |
-          docker compose build web frontend
+          docker compose build backend
 
       - name: Test Docker Compose up
         run: |
           docker compose up -d
           sleep 10
           docker compose ps
-          docker compose logs web
+          docker compose logs backend
           docker compose down
