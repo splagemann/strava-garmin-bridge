@@ -60,7 +60,7 @@ repos:
     rev: 1.7.10
     hooks:
       - id: bandit
-        args: ["-c", "pyproject.toml"]
+        args: ["-c", "backend/pyproject.toml"]
         additional_dependencies: ["bandit[toml]"]
         exclude: ^(tests/|frontend/)
 
@@ -69,5 +69,5 @@ repos:
     rev: v1.5.0
     hooks:
       - id: detect-secrets
-        args: ['--baseline', '.secrets.baseline']
+        args: ['--baseline', 'backend/.secrets.baseline']
         exclude: package.lock.json

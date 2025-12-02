@@ -33,14 +33,14 @@ Automatically sync your activities from Strava to Garmin Connect with customizab
 
 For production deployment using pre-built Docker images from GitHub Container Registry:
 
-📖 **See [DEPLOYMENT.md](DEPLOYMENT.md)** for complete production deployment instructions including:
+📖 **See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** for complete production deployment instructions including:
 - Using pre-built Docker images
 - Setting up reverse proxy (Nginx/Traefik)
 - SSL/TLS configuration
 - Monitoring and backups
 - Security best practices
 
-📖 **See [UPGRADE.md](UPGRADE.md)** for upgrade instructions and rollback procedures.
+📖 **See [docs/UPGRADE.md](docs/UPGRADE.md)** for upgrade instructions and rollback procedures.
 
 ## Quick Start with Docker (Development)
 
@@ -49,9 +49,9 @@ For production deployment using pre-built Docker images from GitHub Container Re
 cd strava-garmin-bridge
 ```
 
-2. **Create environment file**
+2. **Create environment file (for Docker Compose)**
 ```bash
-cp .env.example .env
+cp backend/.env.example .env
 ```
 
 3. **Edit `.env` and configure:**
@@ -71,11 +71,10 @@ docker-compose up -d
 ```bash
 docker-compose ps
 docker-compose logs -f web
-docker-compose logs -f frontend
 ```
+# Note: The frontend is no longer managed by Docker Compose. Please run it separately using `npm run dev` as described in the "Frontend Development" section.
 
 Services will be available at:
-- **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:8000
 - **API Docs**: http://localhost:8000/docs
 
@@ -83,7 +82,7 @@ Services will be available at:
 
 1. **Install dependencies**
 ```bash
-pip install -r requirements.txt
+pip install -r backend/requirements.txt
 ```
 
 2. **Set up PostgreSQL**
@@ -91,15 +90,17 @@ pip install -r requirements.txt
 createdb strava_garmin_sync
 ```
 
-3. **Configure environment**
+3. **Configure environment (for Manual Setup)**
 ```bash
-cp .env.example .env
-# Edit .env with your configuration
+cp backend/.env.example backend/.env
+# Edit backend/.env with your configuration
 ```
 
 4. **Run database migrations**
 ```bash
+cd backend
 alembic upgrade head
+cd ..
 ```
 
 5. **Start services**
@@ -108,13 +109,14 @@ In separate terminals:
 
 ```bash
 # Terminal 1: Web server
-uvicorn app.main:app --reload
+# Make sure you are in the root directory and have the virtual environment activated
+uvicorn backend.app.main:app --reload
 
 # Terminal 2: Celery worker
-celery -A app.celery_app worker --loglevel=info
+celery -A backend.app.celery_app worker --loglevel=info
 
 # Terminal 3: Celery beat (scheduled polling every 5 minutes)
-celery -A app.celery_app beat --loglevel=info
+celery -A backend.app.celery_app beat --loglevel=info
 
 # Terminal 4: Redis (if not running as service)
 redis-server
@@ -137,7 +139,7 @@ redis-server
 - A Celery beat schedule polls Strava every 5 minutes for activities from the last 7 days
 - Previously synced activities are automatically skipped (no duplicates)
 - Ensures no activities are missed even if the service is temporarily down
-- Ensure `celery -A app.celery_app beat` is running (Docker Compose already includes a `celery-beat` service)
+- Ensure `celery -A backend.app.celery_app beat` is running (Docker Compose already includes a `celery-beat` service)
 - Activities are automatically filtered based on your configured patterns before syncing
 
 ## Usage
@@ -178,30 +180,23 @@ Interactive API documentation is available at:
 
 ```
 strava-garmin-bridge/
-├── app/                     # Backend (FastAPI)
-│   ├── __init__.py
-│   ├── main.py              # FastAPI application
-│   ├── config.py            # Configuration
-│   ├── database.py          # Database setup
-│   ├── celery_app.py        # Celery configuration
-│   ├── models/              # Database models
-│   │   ├── user.py
-│   │   ├── auth.py
-│   │   ├── filter.py
-│   │   └── sync_log.py
-│   ├── routes/              # API routes
-│   │   ├── auth.py
-│   │   ├── filters.py
-│   │   └── sync.py
-│   ├── services/            # Business logic
-│   │   ├── strava_service.py
-│   │   ├── garmin_service.py
-│   │   └── sync_service.py
-│   ├── tasks/               # Celery tasks
-│   │   └── sync_tasks.py
-│   └── utils/               # Utilities
-│       ├── crypto.py
-│       └── activity_converter.py
+├── backend/                 # Backend (FastAPI)
+│   ├── app/                 # FastAPI application
+│   │   ├── __init__.py
+│   │   ├── main.py
+│   │   ├── config.py
+│   │   ├── database.py
+│   │   ├── celery_app.py
+│   │   ├── models/              # Database models
+│   │   ├── routes/              # API routes
+│   │   ├── services/            # Business logic
+│   │   ├── tasks/               # Celery tasks
+│   │   └── utils/               # Utilities
+│   ├── migrations/          # Database migrations
+│   ├── tests/               # Tests
+│   ├── Dockerfile           # Backend Docker image
+│   ├── docker-entrypoint.sh # Entrypoint script
+│   └── requirements.txt     # Python dependencies
 ├── frontend/                # Frontend (React + Vite)
 │   ├── src/                 # React source code
 │   ├── public/              # Static assets
@@ -209,10 +204,7 @@ strava-garmin-bridge/
 │   ├── nginx.conf           # Nginx configuration
 │   ├── package.json         # Node dependencies
 │   └── vite.config.ts       # Vite configuration
-├── migrations/              # Database migrations
-├── tests/                   # Tests
-├── requirements.txt         # Python dependencies
-├── Dockerfile               # Backend Docker image
+├── docs/                    # Documentation
 ├── docker-compose.yml       # Docker services
 ├── .env.example             # Environment template
 └── README.md                # This file
@@ -278,12 +270,14 @@ The frontend will be available at http://localhost:5173 and will proxy API reque
 
 ### Running tests
 ```bash
+cd backend
 pytest tests/
 ```
 
 ### Database migrations
 ```bash
 # Create migration
+cd backend
 alembic revision --autogenerate -m "description"
 
 # Apply migration
@@ -293,8 +287,8 @@ alembic upgrade head
 ### Code formatting
 ```bash
 # Backend
-black app/
-isort app/
+black backend/app/
+isort backend/app/
 
 # Frontend
 cd frontend
@@ -317,7 +311,7 @@ We welcome contributions! Please follow these guidelines:
 
 ### Commit Message Format
 
-This project uses conventional commits for automatic changelog generation:
+This project uses conventional commits:
 
 ```bash
 # Examples
@@ -330,12 +324,12 @@ Pre-commit hooks will validate your commit messages automatically.
 
 ### Documentation
 
-- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment guide
-- **[CONFIGURATION.md](CONFIGURATION.md)** - Environment variables and configuration guide
-- **[UPGRADE.md](UPGRADE.md)** - Upgrade and rollback instructions
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Full contributing guidelines
-- **[PRE_COMMIT_SETUP.md](PRE_COMMIT_SETUP.md)** - Pre-commit hooks setup and usage
-- **[DOCKER_WORKFLOW.md](DOCKER_WORKFLOW.md)** - Docker image publishing workflow
+- **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Production deployment guide
+- **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)** - Environment variables and configuration guide
+- **[docs/UPGRADE.md](docs/UPGRADE.md)** - Upgrade and rollback instructions
+- **[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)** - Full contributing guidelines
+- **[docs/PRE_COMMIT_SETUP.md](docs/PRE_COMMIT_SETUP.md)** - Pre-commit hooks setup and usage
+- **[docs/DOCKER_WORKFLOW.md](docs/DOCKER_WORKFLOW.md)** - Docker image publishing workflow
 
 ## License
 

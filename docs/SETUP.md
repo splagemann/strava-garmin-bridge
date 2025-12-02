@@ -9,9 +9,9 @@ Step-by-step guide to get your Strava-Garmin Sync Bridge up and running.
 pip install cryptography
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 
-# 2. Configure environment
-cp .env.example .env
-# Edit .env with your Strava API credentials and encryption key
+2. **Configure environment**
+cp backend/.env.example .env
+# Edit the root .env with your Strava API credentials and encryption key
 
 # 3. Start services
 docker compose up -d
@@ -89,7 +89,7 @@ cd strava-garmin-bridge
 
 2. **Create environment file**
 ```bash
-cp .env.example .env
+cp backend/.env.example .env
 ```
 
 3. **Edit `.env` file**
@@ -128,6 +128,7 @@ LOG_LEVEL=INFO
 ```bash
 docker compose up -d
 ```
+# Note: This will start the backend services. The frontend needs to be started separately as described in the "Frontend Development" section of the README.md.
 
 **Note:** Use `docker compose` (space) not `docker-compose` (hyphen) for newer Docker versions.
 
@@ -172,7 +173,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 2. **Install dependencies**
 ```bash
-pip install -r requirements.txt
+pip install -r backend/requirements.txt
 ```
 
 3. **Start PostgreSQL and Redis**
@@ -187,19 +188,21 @@ pip install -r requirements.txt
 createdb strava_garmin_sync
 
 # Run migrations to create tables
+cd backend
 alembic upgrade head
+cd ..
 ```
 
 5. **Start services in separate terminals**
 
 Terminal 1 - Web Server:
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Terminal 2 - Celery Worker:
 ```bash
-celery -A app.celery_app worker --loglevel=info
+celery -A backend.app.celery_app worker --loglevel=info
 ```
 
 ## Step 6: Connect Your Accounts
@@ -494,7 +497,7 @@ If you encounter issues:
 
 1. Check the logs
 2. Review this setup guide
-3. Check the README.md
+3. Check the ../README.md
 4. Look for similar issues on GitHub
 5. Create a new issue with:
    - Error messages

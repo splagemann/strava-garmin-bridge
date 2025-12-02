@@ -37,7 +37,7 @@ cd strava-garmin-bridge
 curl -O https://raw.githubusercontent.com/splagemann/strava-garmin-bridge/main/docker-compose.prod.yml
 
 # Download environment template
-curl -O https://raw.githubusercontent.com/splagemann/strava-garmin-bridge/main/.env.production.example
+curl -O https://raw.githubusercontent.com/splagemann/strava-garmin-bridge/main/backend/.env.production.example
 mv .env.production.example .env
 ```
 
@@ -459,6 +459,6 @@ redis:
 
 ## Support
 
-- **Documentation**: [README.md](README.md)
+- **Documentation**: [README.md](../README.md)
 - **Issues**: [GitHub Issues](https://github.com/splagemann/strava-garmin-bridge/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/splagemann/strava-garmin-bridge/discussions)

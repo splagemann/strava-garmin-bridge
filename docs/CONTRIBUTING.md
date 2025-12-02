@@ -32,20 +32,22 @@ Thank you for your interest in contributing! This document provides guidelines a
 
 ```bash
 # Install development dependencies
-pip install -r requirements-dev.txt
+pip install -r backend/requirements-dev.txt
 
 # Set up pre-commit hooks
 pre-commit install --hook-type pre-commit --hook-type commit-msg
 
 # Copy environment template
-cp .env.example .env
-# Edit .env with your configuration
+cp backend/.env.example backend/.env
+# Edit backend/.env with your configuration
 
 # Run database migrations
+cd backend
 alembic upgrade head
+cd ..
 
 # Start development server
-uvicorn app.main:app --reload
+uvicorn backend.app.main:app --reload
 ```
 
 #### Frontend Setup
@@ -89,14 +91,14 @@ See [PRE_COMMIT_SETUP.md](PRE_COMMIT_SETUP.md) for detailed instructions.
 
 ```bash
 # Format code
-black app/
-isort app/
+black backend/app/
+isort backend/app/
 
 # Run linter
-flake8 app/
+flake8 backend/app/
 
 # Type checking
-mypy app/
+mypy backend/app/
 ```
 
 ### Frontend Code Style
@@ -155,6 +157,7 @@ Migrate to OAuth2 flow."
 
 ```bash
 # Run all tests
+cd backend
 pytest
 
 # Run with coverage
@@ -325,7 +328,7 @@ def sync_activity(
 
 ### README Updates
 
-Update README.md if you:
+Update ../README.md if you:
 - Add new features
 - Change configuration options
 - Modify setup process
@@ -335,23 +338,24 @@ Update README.md if you:
 
 ```
 strava-garmin-bridge/
-├── app/                     # Backend application
-│   ├── models/              # Database models
-│   ├── routes/              # API routes
-│   ├── services/            # Business logic
-│   ├── tasks/               # Celery tasks
-│   └── utils/               # Utilities
+├── backend/                 # Backend application
+│   ├── app/                 # FastAPI application
+│   │   ├── models/          # Database models
+│   │   ├── routes/          # API routes
+│   │   ├── services/        # Business logic
+│   │   ├── tasks/           # Celery tasks
+│   │   └── utils/           # Utilities
+│   ├── migrations/          # Database migrations
+│   └── tests/               # Backend tests
 ├── frontend/                # React frontend
 │   └── src/                 # Source code
-├── migrations/              # Database migrations
-├── tests/                   # Backend tests
 ├── .github/                 # GitHub Actions
 └── docs/                    # Documentation
 ```
 
 ## Getting Help
 
-- **Documentation**: Check README.md and docs/
+- **Documentation**: Check ../README.md and ./
 - **Issues**: Browse existing GitHub issues
 - **Discussions**: Start a GitHub discussion
 - **Chat**: [Your chat platform, if any]
@@ -380,7 +384,6 @@ By contributing, you agree that your contributions will be licensed under the MI
 ## Recognition
 
 Contributors will be recognized in:
-- CHANGELOG.md
 - GitHub contributors page
 - Release notes
 

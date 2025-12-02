@@ -28,11 +28,11 @@ services:
       retries: 5
 
   # FastAPI Web Application
-  web:
-    build: .
+  backend:
+    build: ./backend
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
-      - .:/app
+      - ./backend:/backend
     ports:
       - "8000:8000"
     environment:
@@ -54,10 +54,10 @@ services:
 
   # Celery Worker
   celery:
-    build: .
+    build: ./backend
     command: celery -A app.celery_app worker --loglevel=info
     volumes:
-      - .:/app
+      - ./backend:/backend
     environment:
       - DATABASE_URL=postgresql://strava_garmin:changeme@db:5432/strava_garmin_sync
       - REDIS_URL=redis://redis:6379/0
@@ -77,11 +77,11 @@ services:
 
   # Celery Beat (for scheduled tasks)
   celery-beat:
-    build: .
+    build: ./backend
     entrypoint: ["/bin/sh", "-c"]
-    command: ["rm -f /app/celerybeat-schedule* && /docker-entrypoint.sh celery -A app.celery_app beat --loglevel=info"]
+    command: ["rm -f /backend/celerybeat-schedule* && /docker-entrypoint.sh celery -A app.celery_app beat --loglevel=info"]
     volumes:
-      - .:/app
+      - ./backend:/backend
     environment:
       - DATABASE_URL=postgresql://strava_garmin:changeme@db:5432/strava_garmin_sync
       - REDIS_URL=redis://redis:6379/0
@@ -98,19 +98,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-
-  # Frontend (React + Vite)
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        - VITE_API_URL=${BASE_URL:-http://localhost:8000}
-    ports:
-      - "3000:80"
-    depends_on:
-      - web
-    restart: unless-stopped
 
 volumes:
   postgres_data:

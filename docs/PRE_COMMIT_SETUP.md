@@ -28,7 +28,7 @@ This project uses pre-commit hooks to enforce code quality and conventional comm
 
 ```bash
 # Install development dependencies (includes pre-commit)
-pip install -r requirements-dev.txt
+pip install -r backend/requirements-dev.txt
 
 # Install pre-commit hooks
 pre-commit install --hook-type pre-commit --hook-type commit-msg
@@ -106,7 +106,7 @@ black....................................................................Failed
 - files were modified by this hook
 
 Files reformatted:
-- app/main.py
+- backend/app/main.py
 
 # Re-add the formatted files and commit again
 git add .
@@ -196,7 +196,7 @@ pre-commit run black --all-files
 pre-commit run conventional-pre-commit --hook-stage commit-msg --commit-msg-filename .git/COMMIT_EDITMSG
 
 # Run hooks on specific files
-pre-commit run --files app/main.py app/config.py
+pre-commit run --files backend/app/main.py backend/app/config.py
 
 # Run hooks on staged files only
 pre-commit run
@@ -221,10 +221,10 @@ Main configuration file defining all hooks and their settings.
 ### `.commitlintrc.json`
 Commit message validation rules (compatible with commitlint).
 
-### `pyproject.toml`
+### `backend/pyproject.toml`
 Configuration for black, isort, and bandit.
 
-### `.secrets.baseline`
+### `backend/.secrets.baseline`
 Baseline for detect-secrets plugin to avoid false positives.
 
 ## Troubleshooting
@@ -270,7 +270,7 @@ pip install detect-secrets
 ### Black formatting conflicts
 ```bash
 # Run black manually
-black app/
+black backend/app/
 
 # Add formatted files
 git add .

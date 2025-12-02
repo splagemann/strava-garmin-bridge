@@ -49,18 +49,19 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
+          pip install -r backend/requirements.txt
+          pip install -r backend/requirements-dev.txt
 
       # Linting disabled for testing PR - will be addressed in separate PR
       # - name: Run linting
       #   run: |
-      #     black --check app/
-      #     isort --check-only app/
-      #     flake8 app/ --max-line-length=100 --ignore=E203,W503
+      #     black --check backend/app/
+      #     isort --check-only backend/app/
+      #     flake8 backend/app/ --max-line-length=100 --ignore=E203,W503
 
       - name: Run tests with coverage
         run: |
+          cd backend
           pytest --cov=app --cov-report=xml --cov-report=term -v
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
@@ -76,7 +77,7 @@ jobs:
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          file: ./coverage.xml
+          file: ./backend/coverage.xml
           flags: backend
           name: backend-coverage
           fail_ci_if_error: false
@@ -204,12 +205,12 @@ jobs:
 
       - name: Test Docker Compose build
         run: |
-          docker compose build web frontend
+          docker compose build backend
 
       - name: Test Docker Compose up
         run: |
           docker compose up -d
           sleep 10
           docker compose ps
-          docker compose logs web
+          docker compose logs backend
           docker compose down
