@@ -27,9 +27,10 @@ describe('WithingsCallbackPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sessionStorage.clear();
-    // Reset search params by recreating the mock object logic if needed,
-    // or just clearing it if we had a way. But URLSearchParams is an object.
-    // We will just overwrite the mock return value in each test if needed.
+    // Reset search params
+    for (const key of Array.from(mockSearchParams.keys())) {
+        mockSearchParams.delete(key);
+    }
   });
 
   it('shows processing state initially', async () => {
