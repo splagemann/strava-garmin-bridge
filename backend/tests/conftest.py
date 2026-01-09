@@ -13,6 +13,8 @@ import pytest
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["STRAVA_CLIENT_ID"] = "test_client_id"
 os.environ["STRAVA_CLIENT_SECRET"] = "test_client_secret"
+os.environ["WITHINGS_CLIENT_ID"] = "test_withings_client_id"
+os.environ["WITHINGS_CLIENT_SECRET"] = "test_withings_client_secret"
 os.environ["ENCRYPTION_KEY"] = "ErLrWG6--TBdTB1AXExGO-NhkVelVXIKf29OtFTNHTY="
 os.environ["SECRET_KEY"] = "test_secret_key"
 os.environ["REDIS_URL"] = "redis://localhost:6379/0"  # Mocked anyway
@@ -28,7 +30,7 @@ from sqlalchemy.pool import StaticPool
 from app.database import Base, get_db
 from app.main import app
 from app.models.filter import ActivityFilter
-from app.models.auth import GarminAuth, StravaAuth
+from app.models.auth import GarminAuth, StravaAuth, WithingsAuth
 from app.models.sync_log import SyncLog
 from app.models.user import User
 from app.utils.crypto import encrypt
@@ -115,6 +117,22 @@ def test_user_with_garmin(test_db: Session, test_user: User) -> User:
         encrypted_password=encrypt("garmin_password"),
     )
     test_db.add(garmin_auth)
+    test_db.commit()
+    test_db.refresh(test_user)
+    return test_user
+
+
+@pytest.fixture
+def test_user_with_withings(test_db: Session, test_user: User) -> User:
+    """Create a test user with Withings authentication."""
+    withings_auth = WithingsAuth(
+        user_id=test_user.id,
+        withings_userid="12345",
+        access_token="test_withings_access_token",
+        refresh_token="test_withings_refresh_token",
+        expires_at=datetime.utcnow() + timedelta(hours=6),
+    )
+    test_db.add(withings_auth)
     test_db.commit()
     test_db.refresh(test_user)
     return test_user

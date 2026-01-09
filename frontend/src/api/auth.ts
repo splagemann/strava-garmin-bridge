@@ -1,7 +1,65 @@
 import { apiClient } from './client';
-import type { AuthStatus, GarminCredentials, StravaAuthResponse, StravaAuthUrlResponse } from '../types';
+import type { AuthStatus, GarminCredentials, StravaAuthResponse, StravaAuthUrlResponse, WithingsAuthResponse, WithingsAuthUrlResponse } from '../types';
 
 export const authApi = {
+  /**
+   * Get Withings OAuth authorization URL
+   */
+  getWithingsAuthUrl: async (): Promise<WithingsAuthUrlResponse> => {
+    const response = await apiClient.get<WithingsAuthUrlResponse>('/api/v1/auth/withings/auth-url');
+    return response.data;
+  },
+
+  /**
+   * Exchange Withings authorization code
+   */
+  exchangeWithingsCode: async (
+    code: string,
+    state: string,
+    signedState: string
+  ): Promise<WithingsAuthResponse> => {
+    const response = await apiClient.post<WithingsAuthResponse>('/api/v1/auth/withings/exchange', {
+      code,
+      state,
+      signed_state: signedState,
+    });
+    return response.data;
+  },
+
+  /**
+   * Redirect to Withings OAuth login
+   */
+  connectWithings: async () => {
+    const data = await authApi.getWithingsAuthUrl();
+    
+    // Store signed state
+    sessionStorage.setItem('withings_oauth_signed_state', data.state);
+    
+    window.location.href = data.auth_url;
+  },
+
+  /**
+   * Handle Withings OAuth callback
+   */
+  handleWithingsCallback: async (code: string, state: string): Promise<WithingsAuthResponse> => {
+    let signedState = sessionStorage.getItem('withings_oauth_signed_state');
+    
+    // Fallback if missing (e.g. cross-device or cleared storage) - usually we'd fail, but for now we might relax or use URL state if matched
+    if (!signedState) {
+      console.warn('No signed state found in storage for Withings');
+      // For now, if missing, we can try to proceed if backend allows or fail.
+      // Backend expects signed_state. 
+      // If we don't have it, we might have to use state as signed_state if it's the same (which it isn't, state is random, signed is JWT)
+      // Actually, strava implementation uses state as signed_state fallback if configured that way, but let's assume we need it.
+      // If lost, user might need to retry.
+      throw new Error('State token missing. Please try connecting again.');
+    }
+
+    sessionStorage.removeItem('withings_oauth_signed_state');
+    
+    return await authApi.exchangeWithingsCode(code, state, signedState);
+  },
+
   /**
    * Get Strava OAuth authorization URL with signed state token
    */

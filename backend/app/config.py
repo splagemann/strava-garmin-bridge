@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     STRAVA_CLIENT_ID: str
     STRAVA_CLIENT_SECRET: str
 
+    # Withings API
+    WITHINGS_CLIENT_ID: str
+    WITHINGS_CLIENT_SECRET: str
+
     # Redis/Celery
     REDIS_URL: str = "redis://localhost:6379/0"
 

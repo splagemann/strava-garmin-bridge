@@ -4,6 +4,7 @@ import { Toaster } from 'sonner';
 import { useAuth } from './hooks/useAuth';
 import AuthPage from './pages/AuthPage';
 import CallbackPage from './pages/CallbackPage';
+import WithingsCallbackPage from './pages/WithingsCallbackPage';
 import DashboardPage from './pages/DashboardPage';
 import FiltersPage from './pages/FiltersPage';
 import SyncHistoryPage from './pages/SyncHistoryPage';
@@ -48,6 +49,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/auth" element={<AuthPage />} />
       <Route path="/auth/callback" element={<CallbackPage />} />
+      <Route path="/auth/withings/callback" element={<WithingsCallbackPage />} />
       <Route
         path="/"
         element={

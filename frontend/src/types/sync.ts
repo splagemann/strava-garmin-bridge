@@ -1,6 +1,6 @@
 export interface SyncLog {
   id: number;
-  sync_direction: 'strava_to_garmin' | 'garmin_to_strava';
+  sync_direction: 'strava_to_garmin' | 'garmin_to_strava' | 'withings_to_garmin';
   source_activity_id: string;
   target_activity_id: string | null;
   strava_activity_id: string;  // Legacy field for backward compatibility

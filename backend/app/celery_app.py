@@ -45,5 +45,9 @@ celery_app.conf.update(
                 "max_activities_per_user": 100,
             },
         },
+        "poll-withings-weight-every-30-minutes": {
+            "task": "app.tasks.sync_tasks.poll_withings_weight_task",
+            "schedule": timedelta(minutes=30),
+        },
     },
 )
