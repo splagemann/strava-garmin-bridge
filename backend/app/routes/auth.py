@@ -15,6 +15,7 @@ from app.middleware.auth import get_current_user
 from app.models import User
 from app.services.garmin_service import GarminService
 from app.services.strava_service import StravaService
+from app.services.withings_service import WithingsService
 from app.utils.jwt import create_access_token, verify_state_token
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,14 @@ class GarminCredentials(BaseModel):
 
     email: str
     password: str
+
+
+class WithingsAuthRequest(BaseModel):
+    """Request model for Withings authorization code exchange."""
+
+    code: str
+    state: str
+    signed_state: str
 
 
 class StravaAuthRequest(BaseModel):
@@ -193,10 +202,54 @@ async def save_garmin_credentials(
         raise HTTPException(status_code=500, detail="Failed to save credentials")
 
 
+@router.get("/withings/auth-url")
+async def get_withings_auth_url():
+    """
+    Get Withings OAuth authorization URL.
+    """
+    try:
+        redirect_uri = f"{settings.FRONTEND_URL}/auth/withings/callback"
+        logger.info(f"Generating Withings auth URL with redirect_uri: {redirect_uri}")
+
+        auth_url, state = WithingsService.get_authorization_url(redirect_uri)
+        
+        return {"auth_url": auth_url, "state": state}
+    except Exception as e:
+        logger.error(f"Error generating Withings auth URL: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/withings/exchange")
+async def exchange_withings_code(
+    auth_request: WithingsAuthRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Exchange Withings authorization code for access token.
+    """
+    try:
+        # Verify state
+        if not verify_state_token(auth_request.signed_state, auth_request.state):
+             raise HTTPException(status_code=400, detail="Invalid state token")
+
+        withings_service = WithingsService(db)
+        redirect_uri = f"{settings.FRONTEND_URL}/auth/withings/callback"
+        
+        token_response = withings_service.exchange_code_for_token(auth_request.code, redirect_uri)
+        
+        withings_service.save_auth(current_user, token_response)
+        
+        return {"message": "Withings connected successfully"}
+    except Exception as e:
+        logger.error(f"Error exchanging Withings code: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.get("/status")
 async def auth_status(current_user: User = Depends(get_current_user)):
     """
-    Check authentication status for both Strava and Garmin for the authenticated user.
+    Check authentication status for Strava, Garmin, and Withings for the authenticated user.
 
     Requires: Bearer token authentication
     """
@@ -204,6 +257,7 @@ async def auth_status(current_user: User = Depends(get_current_user)):
         "email": current_user.email,
         "strava_connected": current_user.strava_auth is not None,
         "garmin_connected": current_user.garmin_auth is not None,
+        "withings_connected": current_user.withings_auth is not None,
         "strava_athlete_id": (
             current_user.strava_auth.athlete_id if current_user.strava_auth else None
         ),

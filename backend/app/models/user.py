@@ -24,6 +24,7 @@ class User(Base):
     # Relationships
     strava_auth = relationship("StravaAuth", back_populates="user", uselist=False)
     garmin_auth = relationship("GarminAuth", back_populates="user", uselist=False)
+    withings_auth = relationship("WithingsAuth", back_populates="user", uselist=False)
     activity_filters = relationship("ActivityFilter", back_populates="user")
     sync_logs = relationship("SyncLog", back_populates="user")
 

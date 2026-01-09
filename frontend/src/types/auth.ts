@@ -8,6 +8,7 @@ export interface AuthStatus {
   email: string;
   strava_connected: boolean;
   garmin_connected: boolean;
+  withings_connected?: boolean;
   strava_athlete_id: string | null;
 }
 
@@ -16,6 +17,15 @@ export interface StravaAuthResponse {
   token_type: string;
   email: string;
   athlete_id: string;
+}
+
+export interface WithingsAuthUrlResponse {
+  auth_url: string;
+  state: string;
+}
+
+export interface WithingsAuthResponse {
+  message: string;
 }
 
 export interface StravaAuthUrlResponse {

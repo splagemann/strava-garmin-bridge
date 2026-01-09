@@ -31,6 +31,15 @@ export function useAuth() {
     }
   };
 
+  const connectWithings = async () => {
+    try {
+      await authApi.connectWithings();
+    } catch (error) {
+      console.error('Error connecting to Withings:', error);
+      throw error;
+    }
+  };
+
   const saveGarminCredentials = async (credentials: GarminCredentials) => {
     return saveGarminMutation.mutateAsync(credentials);
   };
@@ -46,6 +55,7 @@ export function useAuth() {
     isAuthenticated: !!(authStatus?.strava_connected && authStatus?.garmin_connected),
     hasAuthToken,
     connectStrava,
+    connectWithings,
     saveGarminCredentials,
     logout,
     isSavingGarmin: saveGarminMutation.isPending,

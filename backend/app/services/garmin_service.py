@@ -4,6 +4,7 @@ Garmin Connect service for authentication and activity upload.
 
 import json
 import logging
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 from garminconnect import Garmin, GarminConnectAuthenticationError, GarminConnectConnectionError
@@ -363,3 +364,42 @@ class GarminService:
             error_msg = f"{type(e).__name__}: {str(e) if str(e) else 'No details available'}"
             logger.error(f"Error verifying credentials: {error_msg}", exc_info=True)
             return False, error_msg
+
+    def upload_weight(self, weight_kg: float, timestamp: Optional[datetime] = None) -> bool:
+        """
+        Upload weight measurement to Garmin Connect.
+
+        Args:
+            weight_kg: Weight in kilograms
+            timestamp: Measurement timestamp (optional, defaults to now)
+
+        Returns:
+            True if success, False otherwise
+        """
+        if not self.client:
+            logger.error("Garmin client not connected")
+            return False
+
+        try:
+            logger.info(f"Uploading weight {weight_kg}kg to Garmin")
+            
+            # Timestamp format expected by garminconnect is not strictly documented in the method signature 
+            # we saw earlier (it said str | None), but usually it handles it. 
+            # If None, it uses current time.
+            
+            # garminconnect.add_body_composition(timestamp, weight, ...)
+            # timestamp can be ISO string or None
+            
+            ts_str = timestamp.isoformat() if timestamp else None
+            
+            self.client.add_body_composition(
+                timestamp=ts_str,
+                weight=weight_kg
+            )
+            
+            logger.info("Successfully uploaded weight to Garmin")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error uploading weight to Garmin: {e}", exc_info=True)
+            return False

@@ -14,6 +14,7 @@ from app.services.garmin_service import GarminService
 from app.services.garmin_to_strava_sync_service import GarminToStravaSyncService
 from app.services.strava_service import StravaService
 from app.services.sync_service import SyncService
+from app.services.weight_sync_service import WeightSyncService
 
 logger = logging.getLogger(__name__)
 
@@ -300,3 +301,24 @@ def poll_garmin_activities_task(self, lookback_days: int = 7, max_activities_per
 
         except Exception as e:
             logger.error(f"Error polling Garmin for user {user.id}: {e}", exc_info=True)
+
+
+@celery_app.task(bind=True, base=DatabaseTask)
+def poll_withings_weight_task(self):
+    """
+    Periodically poll Withings for new weight measurements and sync to Garmin.
+    """
+    logger.info("Starting periodic Withings weight poll")
+    
+    users = self.db.query(User).filter(User.is_active == True).all()
+
+    for user in users:
+        # Only process users with both Withings and Garmin connected
+        if not user.withings_auth or not user.garmin_auth:
+            continue
+            
+        try:
+            sync_service = WeightSyncService(self.db)
+            sync_service.sync_weight(user)
+        except Exception as e:
+            logger.error(f"Error syncing weight for user {user.id}: {e}", exc_info=True)

@@ -61,3 +61,26 @@ class GarminAuth(Base):
 
     def __repr__(self):
         return f"<GarminAuth(user_id={self.user_id})>"
+
+
+class WithingsAuth(Base):
+    """Withings OAuth authentication credentials."""
+
+    __tablename__ = "withings_auth"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    withings_userid = Column(String, unique=True, index=True, nullable=False)
+    access_token = Column(String, nullable=False)
+    refresh_token = Column(String, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="withings_auth")
+
+    def __repr__(self):
+        return f"<WithingsAuth(user_id={self.user_id}, withings_userid={self.withings_userid})>"
