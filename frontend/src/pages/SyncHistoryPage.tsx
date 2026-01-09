@@ -88,6 +88,7 @@ export default function SyncHistoryPage() {
               <option value="all">All</option>
               <option value="strava_to_garmin">Strava → Garmin</option>
               <option value="garmin_to_strava">Garmin → Strava</option>
+              <option value="withings_to_garmin">Withings → Garmin</option>
             </select>
           </div>
           <button
@@ -157,7 +158,11 @@ export default function SyncHistoryPage() {
                 </div>
                 <div>
                   <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700 font-medium">
-                    {log.sync_direction === 'strava_to_garmin' ? 'S → G' : 'G → S'}
+                    {log.sync_direction === 'strava_to_garmin' 
+                      ? 'S → G' 
+                      : log.sync_direction === 'garmin_to_strava'
+                        ? 'G → S'
+                        : 'W → G'}
                   </span>
                 </div>
                 <div className="text-sm text-gray-600">{log.activity_type || '-'}</div>
@@ -235,7 +240,13 @@ export default function SyncHistoryPage() {
                   <div className="bg-gray-50 p-4 rounded space-y-2">
                     <div><strong>Activity Name:</strong> {selectedLogDetails.activity_name || 'N/A'}</div>
                     <div><strong>Activity Type:</strong> {selectedLogDetails.activity_type || 'N/A'}</div>
-                    <div><strong>Sync Direction:</strong> {selectedLogDetails.sync_direction === 'strava_to_garmin' ? 'Strava → Garmin' : 'Garmin → Strava'}</div>
+                    <div><strong>Sync Direction:</strong> {
+                      selectedLogDetails.sync_direction === 'strava_to_garmin' 
+                        ? 'Strava → Garmin' 
+                        : selectedLogDetails.sync_direction === 'garmin_to_strava'
+                          ? 'Garmin → Strava'
+                          : 'Withings → Garmin'
+                    }</div>
                     <div><strong>Source Activity ID:</strong> {selectedLogDetails.source_activity_id}</div>
                     <div><strong>Target Activity ID:</strong> {selectedLogDetails.target_activity_id || 'N/A'}</div>
                     <div><strong>Status:</strong> {selectedLogDetails.status}</div>

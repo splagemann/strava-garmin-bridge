@@ -177,30 +177,32 @@ class WithingsService:
             logger.error(f"Error refreshing Withings token: {e}")
             raise
 
-    def get_latest_weight(self, user: User) -> Optional[Dict[str, Any]]:
+    def get_recent_weights(self, user: User) -> list[Dict[str, Any]]:
         """
-        Get latest weight measurement from Withings.
+        Get recent weight measurements from Withings (last 365 days).
 
         Args:
             user: User object
 
         Returns:
-            Dictionary with weight (kg) and timestamp, or None if no data
+            List of dictionaries with weight (kg) and timestamp
         """
         withings_auth = user.withings_auth
         if not withings_auth:
-            return None
+            return []
 
         # Check if token needs refresh
         if datetime.utcnow() >= withings_auth.expires_at:
             withings_auth = self._refresh_token(withings_auth)
 
+        # Fetch measurements from the last year
+        start_date = int((datetime.utcnow() - timedelta(days=365)).timestamp())
+
         params = {
             "action": "getmeas",
             "meastype": 1,  # Weight
             "category": 1,  # Real measurements
-            "lastupdate": 0, # All
-            "limit": 1
+            "startdate": start_date,
         }
 
         headers = {"Authorization": f"Bearer {withings_auth.access_token}"}
@@ -212,32 +214,37 @@ class WithingsService:
 
             if result.get("status") != 0:
                 logger.error(f"Withings API error fetching measurements: {result.get('error')}")
-                return None
+                return []
 
             body = result.get("body", {})
             measuregrps = body.get("measuregrps", [])
 
             if not measuregrps:
-                return None
+                return []
 
-            latest_grp = measuregrps[0]
-            timestamp = latest_grp.get("date")
-            measures = latest_grp.get("measures", [])
+            # Sort by date ascending (oldest first) so we process them in order?
+            # Or descending? Order doesn't matter much for syncing individually, 
+            # but maybe processing oldest first makes more logical sense for logs.
+            # Let's keep it default order (usually descending from API?) or just sort.
+            # Sorting by date ascending to sync chronologically.
+            measuregrps.sort(key=lambda x: x.get("date"))
             
-            weight_measure = next((m for m in measures if m.get("type") == 1), None)
+            measurements = []
+            for grp in measuregrps:
+                timestamp = grp.get("date")
+                measures = grp.get("measures", [])
+                
+                weight_measure = next((m for m in measures if m.get("type") == 1), None)
+                if weight_measure:
+                    weight_kg = weight_measure.get("value") * (10 ** weight_measure.get("unit"))
+                    measurements.append({
+                        "weight": weight_kg,
+                        "timestamp": timestamp,
+                        "date": datetime.fromtimestamp(timestamp)
+                    })
             
-            if not weight_measure:
-                return None
-
-            # Calculate actual value: value * 10^unit
-            weight_kg = weight_measure.get("value") * (10 ** weight_measure.get("unit"))
-            
-            return {
-                "weight": weight_kg,
-                "timestamp": timestamp,
-                "date": datetime.fromtimestamp(timestamp)
-            }
+            return measurements
 
         except Exception as e:
             logger.error(f"Error fetching weight from Withings: {e}")
-            return None
+            return []
