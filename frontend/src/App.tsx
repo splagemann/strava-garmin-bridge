@@ -8,6 +8,8 @@ import WithingsCallbackPage from './pages/WithingsCallbackPage';
 import DashboardPage from './pages/DashboardPage';
 import FiltersPage from './pages/FiltersPage';
 import SyncHistoryPage from './pages/SyncHistoryPage';
+import SettingsPage from './pages/SettingsPage';
+import ProfilePage from './pages/ProfilePage';
 import Layout from './components/layout/Layout';
 
 const queryClient = new QueryClient({
@@ -61,6 +63,8 @@ function AppRoutes() {
         <Route index element={<DashboardPage />} />
         <Route path="filters" element={<FiltersPage />} />
         <Route path="history" element={<SyncHistoryPage />} />
+        <Route path="settings" element={<SettingsPage />} />
+        <Route path="profile" element={<ProfilePage />} />
       </Route>
     </Routes>
   );

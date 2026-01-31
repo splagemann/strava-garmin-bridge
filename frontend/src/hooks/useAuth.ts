@@ -17,6 +17,16 @@ export function useAuth() {
 
   const saveGarminMutation = useMutation({
     mutationFn: authApi.saveGarminCredentials,
+    onSuccess: (data) => {
+      if (!data?.mfa_required) {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.authStatus });
+      }
+    },
+  });
+
+  const submitGarminMfaMutation = useMutation({
+    mutationFn: ({ mfaToken, mfaCode }: { mfaToken: string; mfaCode: string }) =>
+      authApi.submitGarminMfa(mfaToken, mfaCode),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.authStatus });
     },
@@ -44,12 +54,21 @@ export function useAuth() {
     return saveGarminMutation.mutateAsync(credentials);
   };
 
+  const submitGarminMfa = async (mfaToken: string, mfaCode: string) => {
+    return submitGarminMfaMutation.mutateAsync({ mfaToken, mfaCode });
+  };
+
   const logout = () => {
     authApi.logout();
   };
 
+  const refetchAuthStatus = () => {
+    queryClient.invalidateQueries({ queryKey: QUERY_KEYS.authStatus });
+  };
+
   return {
     authStatus,
+    refetchAuthStatus,
     isLoading,
     error,
     isAuthenticated: !!(authStatus?.strava_connected && authStatus?.garmin_connected),
@@ -57,8 +76,10 @@ export function useAuth() {
     connectStrava,
     connectWithings,
     saveGarminCredentials,
+    submitGarminMfa,
     logout,
     isSavingGarmin: saveGarminMutation.isPending,
-    garminError: saveGarminMutation.error,
+    isSubmittingGarminMfa: submitGarminMfaMutation.isPending,
+    garminError: saveGarminMutation.error ?? submitGarminMfaMutation.error,
   };
 }

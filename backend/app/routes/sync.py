@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.utils.user_settings import get_garmin_to_strava_sync_enabled
 from app.middleware.auth import get_current_user
 from app.models import SyncLog, User
 from app.services.garmin_to_strava_sync_service import GarminToStravaSyncService
@@ -127,6 +128,12 @@ async def manual_sync_garmin_to_strava(
 
     Requires: Bearer token authentication
     """
+    if not get_garmin_to_strava_sync_enabled(current_user, db):
+        raise HTTPException(
+            status_code=403,
+            detail="Garmin → Strava sync is disabled. Enable it in Settings to sync from Garmin to Strava.",
+        )
+
     user = current_user
 
     # Check if user has both Strava and Garmin configured

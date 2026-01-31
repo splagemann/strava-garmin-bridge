@@ -15,6 +15,7 @@ from app.models import ActivityFilter, SyncLog, User
 from app.services.garmin_service import GarminService
 from app.services.strava_service import StravaService
 from app.utils.activity_converter import ActivityConverter
+from app.utils.user_settings import get_allow_export_without_gps
 
 logger = logging.getLogger(__name__)
 
@@ -240,16 +241,27 @@ class SyncService:
                 logger.info(result["message"])
                 return result
 
-            # 3. Fetch activity streams
+            # 3. Fetch activity streams (optional for activities without GPS, e.g. indoor/treadmill)
             logger.info(f"Fetching activity streams for {strava_activity_id}")
             streams = self.strava_service.get_activity_streams(self.user, strava_activity_id)
+            if streams is None:
+                streams = {}
 
-            if not streams or "latlng" not in streams:
-                result["message"] = "No GPS data available for this activity"
-                self._update_sync_log(sync_log, "failed", result["message"])
-                return result
+            has_gps = streams and "latlng" in streams and streams.get("latlng")
+            if not has_gps:
+                if not get_allow_export_without_gps(self.user, self.db):
+                    result["status"] = "skipped"
+                    result["message"] = (
+                        "Activity has no GPS. Enable 'Export without GPS' in Settings to sync indoor or manual activities to Garmin."
+                    )
+                    self._update_sync_log(sync_log, "skipped", result["message"])
+                    logger.info(result["message"])
+                    return result
+                logger.info(
+                    f"No GPS stream for activity {strava_activity_id}; syncing as summary-only (indoor/manual)"
+                )
 
-            # 4. Convert to FIT format
+            # 4. Convert to FIT format (converter supports no-GPS via summary + optional streams)
             logger.info(f"Converting activity to FIT format")
             fit_data = self.converter.strava_to_fit(activity, streams)
 
@@ -257,7 +269,7 @@ class SyncService:
             if isinstance(fit_data, bytes):
                 num_points = (
                     len(streams.get("latlng").data)
-                    if "latlng" in streams and streams.get("latlng")
+                    if streams and "latlng" in streams and streams.get("latlng")
                     else 0
                 )
                 fit_summary = {

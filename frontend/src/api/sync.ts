@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { SyncLog, SyncStats, ManualSyncRequest, ManualSyncResponse } from '../types';
+import type { SyncLog, SyncStats, ManualSyncRequest, ManualSyncResponse, SyncLogDetails, BulkDeleteSyncLogsParams } from '../types';
 
 export const syncApi = {
   /**
@@ -66,11 +66,7 @@ export const syncApi = {
   /**
    * Bulk delete sync logs with optional filters
    */
-  bulkDeleteSyncLogs: async (params?: {
-    status?: 'success' | 'failed' | 'skipped' | 'pending';
-    before_date?: string;
-    strava_activity_id?: string;
-  }): Promise<{ message: string; deleted_count: number }> => {
+  bulkDeleteSyncLogs: async (params?: BulkDeleteSyncLogsParams): Promise<{ message: string; deleted_count: number }> => {
     const response = await apiClient.delete('/api/v1/sync/history', { params });
     return response.data;
   },
@@ -78,22 +74,7 @@ export const syncApi = {
   /**
    * Get sync log details including debug data
    */
-  getSyncLogDetails: async (syncLogId: number): Promise<{
-    id: number;
-    sync_direction: string;
-    source_activity_id: string;
-    target_activity_id: string | null;
-    strava_activity_id: string;  // Legacy field
-    garmin_activity_id: string | null;  // Legacy field
-    status: string;
-    error_message: string | null;
-    activity_name: string | null;
-    activity_type: string | null;
-    strava_data: any | null;
-    gpx_data: string | null;
-    created_at: string;
-    completed_at: string | null;
-  }> => {
+  getSyncLogDetails: async (syncLogId: number): Promise<SyncLogDetails> => {
     const response = await apiClient.get(`/api/v1/sync/history/${syncLogId}/details`);
     return response.data;
   },

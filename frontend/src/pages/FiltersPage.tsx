@@ -55,8 +55,9 @@ export default function FiltersPage() {
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Activity Filters</h1>
         <button
+          type="button"
           onClick={() => setShowForm(!showForm)}
-          className="bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-md font-medium"
+          className="bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-md font-medium cursor-pointer"
         >
           {showForm ? 'Cancel' : 'New Filter'}
         </button>
@@ -117,7 +118,7 @@ export default function FiltersPage() {
             <button
               type="submit"
               disabled={isCreating}
-              className="w-full bg-primary hover:bg-primary/90 text-white py-2 rounded-md font-medium disabled:opacity-50"
+              className="w-full bg-primary hover:bg-primary/90 text-white py-2 rounded-md font-medium disabled:opacity-50 cursor-pointer"
             >
               {isCreating ? 'Creating...' : 'Create Filter'}
             </button>
@@ -142,16 +143,18 @@ export default function FiltersPage() {
             </div>
             <div className="flex items-center gap-2">
               <button
+                type="button"
                 onClick={() => toggleActive(filter.id, filter.active)}
-                className={`px-3 py-1 rounded-md text-sm font-medium ${
+                className={`px-3 py-1 rounded-md text-sm font-medium cursor-pointer ${
                   filter.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
                 }`}
               >
                 {filter.active ? 'Active' : 'Inactive'}
               </button>
               <button
+                type="button"
                 onClick={() => handleDelete(filter.id)}
-                className="text-red-600 hover:text-red-800 text-sm font-medium"
+                className="text-red-600 hover:text-red-800 text-sm font-medium cursor-pointer"
               >
                 Delete
               </button>

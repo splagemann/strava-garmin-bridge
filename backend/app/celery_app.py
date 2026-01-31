@@ -16,6 +16,31 @@ celery_app = Celery(
     include=["app.tasks.sync_tasks"],
 )
 
+# Build beat schedule: Garmin → Strava poll only when enabled
+_beat_schedule = {
+    "poll-strava-activities-every-5-minutes": {
+        "task": "app.tasks.sync_tasks.poll_strava_activities_task",
+        "schedule": timedelta(minutes=5),
+        "kwargs": {
+            "lookback_days": 7,
+            "max_activities_per_user": 100,
+        },
+    },
+    "poll-withings-weight-every-30-minutes": {
+        "task": "app.tasks.sync_tasks.poll_withings_weight_task",
+        "schedule": timedelta(minutes=30),
+    },
+}
+if settings.GARMIN_TO_STRAVA_SYNC_ENABLED:
+    _beat_schedule["poll-garmin-activities-every-5-minutes"] = {
+        "task": "app.tasks.sync_tasks.poll_garmin_activities_task",
+        "schedule": timedelta(minutes=5),
+        "kwargs": {
+            "lookback_days": 7,
+            "max_activities_per_user": 100,
+        },
+    }
+
 # Configure Celery
 celery_app.conf.update(
     task_serializer="json",
@@ -28,26 +53,5 @@ celery_app.conf.update(
     task_soft_time_limit=240,  # 4 minutes soft limit
     worker_prefetch_multiplier=1,
     worker_max_tasks_per_child=100,
-    beat_schedule={
-        "poll-strava-activities-every-5-minutes": {
-            "task": "app.tasks.sync_tasks.poll_strava_activities_task",
-            "schedule": timedelta(minutes=5),
-            "kwargs": {
-                "lookback_days": 7,  # fetch activities from last 7 days
-                "max_activities_per_user": 100,  # increased to handle more activities
-            },
-        },
-        "poll-garmin-activities-every-5-minutes": {
-            "task": "app.tasks.sync_tasks.poll_garmin_activities_task",
-            "schedule": timedelta(minutes=5),
-            "kwargs": {
-                "lookback_days": 7,  # fetch activities from last 7 days
-                "max_activities_per_user": 100,
-            },
-        },
-        "poll-withings-weight-every-30-minutes": {
-            "task": "app.tasks.sync_tasks.poll_withings_weight_task",
-            "schedule": timedelta(minutes=30),
-        },
-    },
+    beat_schedule=_beat_schedule,
 )

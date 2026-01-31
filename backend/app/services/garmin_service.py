@@ -4,16 +4,26 @@ Garmin Connect service for authentication and activity upload.
 
 import json
 import logging
+import threading
+import time
+import uuid
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from garminconnect import Garmin, GarminConnectAuthenticationError, GarminConnectConnectionError
+from garth.exc import GarthException
 from sqlalchemy.orm import Session
 
 from app.models import GarminAuth, User
 from app.utils.crypto import decrypt, encrypt
 
 logger = logging.getLogger(__name__)
+
+# In-memory store for MFA pending state (Garmin client + client_state not serializable).
+# Key: mfa_token (str), Value: dict with garmin, client_state, email, password, user_id, created_at
+_MFA_PENDING: Dict[str, Dict[str, Any]] = {}
+_MFA_LOCK = threading.Lock()
+_MFA_TTL_SECONDS = 300  # 5 minutes
 
 
 class GarminService:
@@ -65,6 +75,131 @@ class GarminService:
         self.db.refresh(garmin_auth)
         return garmin_auth
 
+    def _mfa_cleanup_expired(self) -> None:
+        """Remove expired MFA pending entries."""
+        now = time.time()
+        with _MFA_LOCK:
+            expired = [k for k, v in _MFA_PENDING.items() if (now - v["created_at"]) > _MFA_TTL_SECONDS]
+            for k in expired:
+                del _MFA_PENDING[k]
+
+    def start_login_with_mfa(
+        self, user_id: int, email: str, password: str
+    ) -> Tuple[str, Any]:
+        """
+        Start Garmin login; supports MFA by returning early when MFA is required.
+
+        Args:
+            user_id: Current user id (for completing MFA later).
+            email: Garmin Connect email.
+            password: Garmin Connect password.
+
+        Returns:
+            ("mfa_required", mfa_token) when MFA code is needed; caller should
+            call complete_mfa(mfa_token, mfa_code, user_id) with the code.
+            ("success", garmin_client) when login completed without MFA; caller
+            should save credentials and session from the client.
+        """
+        self._mfa_cleanup_expired()
+        try:
+            client = Garmin(email=email, password=password, return_on_mfa=True)
+            login_result = client.login()
+        except GarminConnectAuthenticationError as e:
+            logger.error(f"Garmin login (MFA flow) auth failed: {e}")
+            raise
+        except GarminConnectConnectionError as e:
+            logger.error(f"Garmin login (MFA flow) connection error: {e}")
+            raise
+
+        if login_result and login_result[0] == "needs_mfa":
+            client_state = login_result[1]
+            mfa_token = str(uuid.uuid4())
+            with _MFA_LOCK:
+                _MFA_PENDING[mfa_token] = {
+                    "garmin": client,
+                    "client_state": client_state,
+                    "email": email,
+                    "password": password,
+                    "user_id": user_id,
+                    "created_at": time.time(),
+                }
+            logger.info(f"MFA required for Garmin login, token issued for user {user_id}")
+            return "mfa_required", mfa_token
+
+        # Login succeeded without MFA
+        logger.info("Garmin login succeeded without MFA")
+        return "success", client
+
+    def complete_mfa(
+        self, mfa_token: str, mfa_code: str, user: User
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Complete Garmin login with MFA code and save credentials + session.
+
+        Args:
+            mfa_token: Token returned from start_login_with_mfa when MFA was required.
+            mfa_code: MFA code from the user (e.g. from authenticator app).
+            user: User to attach Garmin credentials to.
+
+        Returns:
+            (True, None) on success; (False, error_message) on failure.
+        """
+        self._mfa_cleanup_expired()
+        with _MFA_LOCK:
+            pending = _MFA_PENDING.pop(mfa_token, None)
+        if not pending:
+            return False, "MFA session expired or invalid. Please submit your Garmin credentials again."
+
+        now = time.time()
+        if (now - pending["created_at"]) > _MFA_TTL_SECONDS:
+            return False, "MFA session expired. Please submit your Garmin credentials again."
+
+        garmin_client = pending["garmin"]
+        client_state = pending["client_state"]
+        email = pending["email"]
+        password = pending["password"]
+
+        try:
+            garmin_client.resume_login(client_state, mfa_code)
+        except GarminConnectAuthenticationError as e:
+            logger.warning(f"MFA completion failed for user {user.id}: {e}")
+            return False, "Invalid MFA code. Please try again."
+        except GarminConnectConnectionError as e:
+            logger.warning(f"MFA completion connection error for user {user.id}: {e}")
+            return False, str(e)
+        except GarthException as e:
+            msg = str(e).strip() if str(e) else ""
+            logger.warning(f"MFA completion (Garth) for user {user.id}: {e}")
+            if "csrf" in msg.lower() or "session" in msg.lower() or "expired" in msg.lower():
+                return False, "Session expired. Please re-enter your Garmin credentials and try the code again."
+            if "mfa" in msg.lower() or "code" in msg.lower() or "invalid" in msg.lower():
+                return False, "Invalid MFA code. Please try again."
+            if msg and len(msg) < 120 and "traceback" not in msg.lower():
+                return False, f"MFA verification failed: {msg}"
+            return False, "MFA verification failed. Please re-enter your Garmin credentials and try the code again."
+        except AssertionError as e:
+            logger.warning(f"MFA completion assertion for user {user.id}: {e}")
+            return False, "Session expired or invalid. Please re-enter your Garmin credentials and try again."
+        except Exception as e:
+            logger.exception(f"MFA completion error for user {user.id}: {type(e).__name__}: {e}")
+            err_msg = str(e).strip() if str(e) else ""
+            if err_msg and len(err_msg) < 100 and "\n" not in err_msg and "traceback" not in err_msg.lower():
+                return False, f"Verification failed: {err_msg}"
+            return False, (
+                "Verification failed. Try re-entering your Garmin credentials, then enter the new code from your app quickly."
+            )
+
+        try:
+            session_json = garmin_client.garth.dumps()
+            garmin_auth = self.save_credentials(user, email, password)
+            garmin_auth.session_data = session_json
+            self.db.commit()
+            logger.info(f"Garmin credentials and session saved for user {user.id} after MFA")
+            return True, None
+        except Exception as e:
+            logger.exception(f"Failed to save Garmin credentials after MFA: {e}")
+            return False, "Failed to save credentials. Please try again."
+
     def connect(self, user: User) -> bool:
         """
         Connect to Garmin Connect for a user.
@@ -106,8 +241,20 @@ class GarminService:
             logger.info(f"Performing fresh Garmin login for user {user.id}")
             self.client = Garmin(email=email, password=password)
 
-            # Login returns tuple: (status, mfa_data) where status can be "needs_mfa" or None
-            login_result = self.client.login()
+            # Login returns tuple: (status, mfa_data) or (OAuth1Token, OAuth2Token).
+            # When MFA is required, garth returns ("needs_mfa", state); garminconnect
+            # may then access profile before checking, raising AssertionError.
+            try:
+                login_result = self.client.login()
+            except AssertionError as e:
+                if "OAuth1 token is required for OAuth2 refresh" in str(e):
+                    logger.error(
+                        "Garmin login failed for user %s (MFA/OAuth1): %s",
+                        user.id,
+                        e,
+                    )
+                    return False
+                raise
 
             # Check if MFA is required
             if login_result and login_result[0] == "needs_mfa":
@@ -334,14 +481,28 @@ class GarminService:
         Returns:
             Tuple of (success: bool, error_message: Optional[str])
         """
+        _OAUTH1_REFRESH_MSG = "OAuth1 token is required for OAuth2 refresh"
+
         try:
             logger.info(f"Attempting to verify Garmin credentials for {email}")
 
             # Use garminconnect with the correct login pattern
             client = Garmin(email=email, password=password)
 
-            # Login returns tuple: (status, mfa_data)
-            login_result = client.login()
+            # Login returns tuple: (status, mfa_data) or (OAuth1Token, OAuth2Token)
+            # When MFA is required, garth returns ("needs_mfa", state) and then
+            # garminconnect may access profile before checking, triggering AssertionError
+            try:
+                login_result = client.login()
+            except AssertionError as e:
+                if _OAUTH1_REFRESH_MSG in str(e):
+                    error_msg = (
+                        "MFA/2FA is required for this account. "
+                        "Please disable 2FA or use an app-specific password."
+                    )
+                    logger.warning(f"Garmin login failed (OAuth1/MFA): {e}")
+                    return False, error_msg
+                raise
 
             # Check if MFA is required
             if login_result and login_result[0] == "needs_mfa":
@@ -360,6 +521,15 @@ class GarminService:
             error_msg = f"Connection error: {str(e)}"
             logger.error(error_msg)
             return False, error_msg
+        except AssertionError as e:
+            if _OAUTH1_REFRESH_MSG in str(e):
+                error_msg = (
+                    "MFA/2FA is required for this account. "
+                    "Please disable 2FA or use an app-specific password."
+                )
+                logger.warning(f"Garmin verify credentials failed (OAuth1/MFA): {e}")
+                return False, error_msg
+            raise
         except Exception as e:
             error_msg = f"{type(e).__name__}: {str(e) if str(e) else 'No details available'}"
             logger.error(f"Error verifying credentials: {error_msg}", exc_info=True)

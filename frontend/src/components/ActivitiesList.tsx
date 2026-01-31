@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { Activity } from '../api/activities';
 import { activitiesApi } from '../api/activities';
 import { syncApi } from '../api/sync';
+import { useAuth } from '../hooks/useAuth';
 import { toast } from 'sonner';
 
 interface ActivitiesListProps {
@@ -9,6 +10,9 @@ interface ActivitiesListProps {
 }
 
 export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
+  const { authStatus } = useAuth();
+  const garminToStravaEnabled = authStatus?.garmin_to_strava_sync_disabled !== true;
+
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeSource, setActiveSource] = useState<'all' | 'strava' | 'garmin'>('all');
@@ -129,8 +133,9 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
           <h2 className="text-lg font-semibold">Recent Activities</h2>
           <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0">
             <button
+              type="button"
               onClick={() => setActiveSource('all')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors ${
+              className={`px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors cursor-pointer ${
                 activeSource === 'all'
                   ? 'bg-primary text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -139,8 +144,9 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
               All
             </button>
             <button
+              type="button"
               onClick={() => setActiveSource('strava')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors ${
+              className={`px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors cursor-pointer ${
                 activeSource === 'strava'
                   ? 'bg-primary text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -149,8 +155,9 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
               Strava
             </button>
             <button
+              type="button"
               onClick={() => setActiveSource('garmin')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors ${
+              className={`px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors cursor-pointer ${
                 activeSource === 'garmin'
                   ? 'bg-primary text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -242,11 +249,11 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
                       </div>
                     )}
                   </div>
-                  {!activity.synced && (
+                  {!activity.synced && (activity.source === 'strava' || garminToStravaEnabled) && (
                     <button
                       onClick={() => handleSync(activity)}
                       disabled={syncingActivityId === activity.id}
-                      className="px-3 py-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-md disabled:opacity-50 whitespace-nowrap transition-colors"
+                      className="px-3 py-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-md disabled:opacity-50 whitespace-nowrap transition-colors cursor-pointer"
                       title={activity.source === 'strava' ? 'Sync to Garmin' : 'Sync to Strava'}
                     >
                       {syncingActivityId === activity.id ? (

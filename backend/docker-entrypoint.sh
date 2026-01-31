@@ -3,6 +3,9 @@ set -e
 
 echo "Starting Strava-Garmin Sync Bridge backend..."
 
+# Migrations run automatically on every backend container start when DATABASE_URL is set.
+# This ensures new deployments and restarts always have the latest schema.
+
 # Extract database connection details from DATABASE_URL
 # Format: postgresql://user:password@host:port/dbname
 if [ -n "$DATABASE_URL" ]; then
@@ -29,8 +32,8 @@ if [ -n "$DATABASE_URL" ]; then
 
     echo "PostgreSQL is up - running database migrations..."
 
-    # Run database migrations
-    alembic upgrade head
+    # Run database migrations (must run from backend dir where alembic.ini lives)
+    cd /backend && alembic upgrade head
 
     echo "Migrations completed successfully!"
 else

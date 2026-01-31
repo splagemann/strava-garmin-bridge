@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useSync } from '../hooks/useSync';
 import { syncApi } from '../api';
+import type { SyncLog, SyncLogDetails, BulkDeleteSyncLogsParams } from '../types';
 import { toast } from 'sonner';
 import { formatDate } from '../lib/utils';
 import { SYNC_STATUS_COLORS, SYNC_STATUS_LABELS } from '../lib/constants';
@@ -10,11 +11,11 @@ export default function SyncHistoryPage() {
   const [showBulkDelete, setShowBulkDelete] = useState(false);
   const [bulkDeleteStatus, setBulkDeleteStatus] = useState<string>('');
   const [directionFilter, setDirectionFilter] = useState<string>('all');
-  const [selectedLogDetails, setSelectedLogDetails] = useState<any>(null);
+  const [selectedLogDetails, setSelectedLogDetails] = useState<SyncLogDetails | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
 
   // Filter sync history by direction
-  const filteredHistory = syncHistory.filter(log => {
+  const filteredHistory = syncHistory.filter((log: SyncLog) => {
     if (directionFilter === 'all') return true;
     return log.sync_direction === directionFilter;
   });
@@ -40,9 +41,9 @@ export default function SyncHistoryPage() {
   };
 
   const handleBulkDelete = async () => {
-    const filters: any = {};
+    const filters: BulkDeleteSyncLogsParams = {};
     if (bulkDeleteStatus) {
-      filters.status = bulkDeleteStatus;
+      filters.status = bulkDeleteStatus as BulkDeleteSyncLogsParams['status'];
     }
 
     const message = bulkDeleteStatus
@@ -92,8 +93,9 @@ export default function SyncHistoryPage() {
             </select>
           </div>
           <button
+            type="button"
             onClick={() => setShowBulkDelete(!showBulkDelete)}
-            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md font-medium"
+            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md font-medium cursor-pointer"
           >
             {showBulkDelete ? 'Cancel' : 'Bulk Delete'}
           </button>
@@ -121,9 +123,10 @@ export default function SyncHistoryPage() {
               </select>
             </div>
             <button
+              type="button"
               onClick={handleBulkDelete}
               disabled={isDeleting}
-              className="w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded-md font-medium disabled:opacity-50"
+              className="w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded-md font-medium disabled:opacity-50 cursor-pointer"
             >
               Delete Logs
             </button>
@@ -178,25 +181,28 @@ export default function SyncHistoryPage() {
                 <div className="text-sm text-gray-600">{formatDate(log.created_at)}</div>
                 <div className="flex gap-2 flex-col">
                   <button
+                    type="button"
                     onClick={() => handleViewDetails(log.id)}
                     disabled={loadingDetails}
-                    className="text-sm text-blue-600 hover:text-blue-800 font-medium disabled:opacity-50"
+                    className="text-sm text-blue-600 hover:text-blue-800 font-medium disabled:opacity-50 cursor-pointer"
                   >
                     Details
                   </button>
                   {log.status === 'failed' && (
                     <button
+                      type="button"
                       onClick={() => handleRetry(log.id)}
                       disabled={isRetrying}
-                      className="text-sm text-primary hover:text-primary/80 font-medium disabled:opacity-50"
+                      className="text-sm text-primary hover:text-primary/80 font-medium disabled:opacity-50 cursor-pointer"
                     >
                       Retry
                     </button>
                   )}
                   <button
+                    type="button"
                     onClick={() => handleDelete(log.id)}
                     disabled={isDeleting}
-                    className="text-sm text-red-600 hover:text-red-800 font-medium disabled:opacity-50"
+                    className="text-sm text-red-600 hover:text-red-800 font-medium disabled:opacity-50 cursor-pointer"
                   >
                     Delete
                   </button>
@@ -224,8 +230,9 @@ export default function SyncHistoryPage() {
             <div className="px-6 py-4 border-b flex justify-between items-center">
               <h2 className="text-xl font-bold">Sync Details</h2>
               <button
+                type="button"
                 onClick={() => setSelectedLogDetails(null)}
-                className="text-gray-500 hover:text-gray-700"
+                className="text-gray-500 hover:text-gray-700 cursor-pointer"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -254,7 +261,7 @@ export default function SyncHistoryPage() {
                 </div>
 
                 {/* Strava Data */}
-                {selectedLogDetails.strava_data && (
+                {selectedLogDetails.strava_data != null ? (
                   <div>
                     <h3 className="text-lg font-semibold mb-2">Strava Activity Data</h3>
                     <div className="bg-gray-50 p-4 rounded">
@@ -263,7 +270,7 @@ export default function SyncHistoryPage() {
                       </pre>
                     </div>
                   </div>
-                )}
+                ) : null}
 
                 {/* FIT Data Summary */}
                 {selectedLogDetails.gpx_data && (
@@ -329,8 +336,9 @@ export default function SyncHistoryPage() {
             </div>
             <div className="px-6 py-4 border-t flex justify-end">
               <button
+                type="button"
                 onClick={() => setSelectedLogDetails(null)}
-                className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-md font-medium"
+                className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-md font-medium cursor-pointer"
               >
                 Close
               </button>

@@ -17,6 +17,9 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
+    username = Column(String(64), unique=True, index=True, nullable=True)
+    first_name = Column(String(255), nullable=True)
+    last_name = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_active = Column(Boolean, default=True)
@@ -27,6 +30,7 @@ class User(Base):
     withings_auth = relationship("WithingsAuth", back_populates="user", uselist=False)
     activity_filters = relationship("ActivityFilter", back_populates="user")
     sync_logs = relationship("SyncLog", back_populates="user")
+    user_settings = relationship("UserSettings", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User(id={self.id}, email={self.email})>"

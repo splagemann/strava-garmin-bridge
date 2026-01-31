@@ -210,6 +210,8 @@ class ActivityConverter:
         import logging
 
         logger = logging.getLogger(__name__)
+        if streams is None:
+            streams = {}
 
         # Helper function to convert Duration/timedelta to seconds
         def duration_to_seconds(duration):
@@ -252,23 +254,31 @@ class ActivityConverter:
         sport, sub_sport = ActivityConverter.map_activity_type_to_fit(activity_type_str)
         logger.info(f"Activity type: {activity_type_str} -> Sport: {sport}, SubSport: {sub_sport}")
 
-        # Extract stream data
-        latlng = streams.get("latlng").data if "latlng" in streams and streams.get("latlng") else []
+        # Extract stream data (latlng may be missing for indoor/manual activities)
+        latlng = []
+        if streams:
+            latlng = (
+                streams.get("latlng").data
+                if "latlng" in streams and streams.get("latlng")
+                else []
+            )
         altitude = (
             streams.get("altitude").data
-            if "altitude" in streams and streams.get("altitude")
+            if streams and "altitude" in streams and streams.get("altitude")
             else []
         )
         time_data_raw = (
-            streams.get("time").data if "time" in streams and streams.get("time") else []
+            streams.get("time").data if streams and "time" in streams and streams.get("time") else []
         )
         heartrate = (
             streams.get("heartrate").data
-            if "heartrate" in streams and streams.get("heartrate")
+            if streams and "heartrate" in streams and streams.get("heartrate")
             else []
         )
         cadence = (
-            streams.get("cadence").data if "cadence" in streams and streams.get("cadence") else []
+            streams.get("cadence").data
+            if streams and "cadence" in streams and streams.get("cadence")
+            else []
         )
 
         # Convert time data to seconds (might be int, float, or timedelta)
@@ -354,58 +364,99 @@ class ActivityConverter:
             records.append(record)
             builder.add(record)
 
-        # 3. Lap Message
+        # 2b. No GPS but we have time + HR/cadence: create record messages for stream data
+        if not records and (time_data or heartrate or cadence):
+            # Length: prefer time stream; else longest of HR/cadence; else 1 (lap/session only)
+            n_points = (
+                len(time_data)
+                if time_data
+                else max(
+                    len(heartrate) if heartrate else 0,
+                    len(cadence) if cadence else 0,
+                    1,
+                )
+            )
+            total_dist = (
+                float(activity.distance)
+                if hasattr(activity, "distance") and activity.distance
+                else None
+            )
+            for i in range(n_points):
+                record = RecordMessage()
+                if time_data and i < len(time_data):
+                    point_time = start_time + timedelta(seconds=time_data[i])
+                    record.timestamp = datetime_to_fit_timestamp(point_time)
+                else:
+                    point_time = start_time + timedelta(seconds=i)
+                    record.timestamp = datetime_to_fit_timestamp(point_time)
+                if i < len(heartrate):
+                    record.heart_rate = int(heartrate[i])
+                if i < len(cadence):
+                    record.cadence = int(cadence[i])
+                if total_dist is not None and n_points > 0:
+                    record.distance = total_dist * (i / n_points)
+                records.append(record)
+                builder.add(record)
+
+        # 3. Lap Message (required for Garmin; create from records or from activity summary)
+        lap = LapMessage()
         if records:
-            lap = LapMessage()
-            # timestamps are already in milliseconds from records
             lap.timestamp = (
                 records[-1].timestamp
                 if records[-1].timestamp
                 else datetime_to_fit_timestamp(start_time)
             )
-            lap.start_time = datetime_to_fit_timestamp(start_time)
-            lap.sport = sport
-            lap.sub_sport = sub_sport
-            logger.info(
-                f"Setting Lap: sport={sport} ({type(sport)}), sub_sport={sub_sport} ({type(sub_sport)})"
-            )
-            lap.total_elapsed_time = duration_to_seconds(activity.elapsed_time)
-            lap.total_timer_time = duration_to_seconds(activity.moving_time)
-            lap.total_distance = (
-                float(activity.distance)
-                if hasattr(activity, "distance") and activity.distance
-                else None
-            )
-            lap.total_calories = (
-                int(activity.calories)
-                if hasattr(activity, "calories") and activity.calories
-                else None
-            )
+        else:
+            # No GPS: use start_time + duration for end timestamp
+            elapsed = duration_to_seconds(activity.elapsed_time) or 0
+            end_time = start_time
+            if end_time.tzinfo is None:
+                end_time = end_time.replace(tzinfo=timezone.utc)
+            end_time = end_time + timedelta(seconds=elapsed)
+            lap.timestamp = datetime_to_fit_timestamp(end_time)
 
-            # Average/max heart rate
-            if heartrate:
-                lap.avg_heart_rate = int(sum(heartrate) / len(heartrate))
-                lap.max_heart_rate = int(max(heartrate))
+        lap.start_time = datetime_to_fit_timestamp(start_time)
+        lap.sport = sport
+        lap.sub_sport = sub_sport
+        logger.info(
+            f"Setting Lap: sport={sport} ({type(sport)}), sub_sport={sub_sport} ({type(sub_sport)})"
+        )
+        lap.total_elapsed_time = duration_to_seconds(activity.elapsed_time)
+        lap.total_timer_time = duration_to_seconds(activity.moving_time)
+        lap.total_distance = (
+            float(activity.distance)
+            if hasattr(activity, "distance") and activity.distance
+            else None
+        )
+        lap.total_calories = (
+            int(activity.calories)
+            if hasattr(activity, "calories") and activity.calories
+            else None
+        )
 
-            # Average/max cadence
-            if cadence:
-                lap.avg_cadence = int(sum(cadence) / len(cadence))
-                lap.max_cadence = int(max(cadence))
+        # Average/max heart rate
+        if heartrate:
+            lap.avg_heart_rate = int(sum(heartrate) / len(heartrate))
+            lap.max_heart_rate = int(max(heartrate))
 
-            # Elevation
-            if hasattr(activity, "total_elevation_gain") and activity.total_elevation_gain:
-                lap.total_ascent = int(activity.total_elevation_gain)
+        # Average/max cadence
+        if cadence:
+            lap.avg_cadence = int(sum(cadence) / len(cadence))
+            lap.max_cadence = int(max(cadence))
 
-            lap.lap_trigger = LapTrigger.SESSION_END
-            builder.add(lap)
+        # Elevation
+        if hasattr(activity, "total_elevation_gain") and activity.total_elevation_gain:
+            lap.total_ascent = int(activity.total_elevation_gain)
+
+        lap.lap_trigger = LapTrigger.SESSION_END
+        builder.add(lap)
 
         # 4. Session Message
         session = SessionMessage()
-        session.timestamp = (
-            records[-1].timestamp
-            if records and records[-1].timestamp
-            else datetime_to_fit_timestamp(start_time)
-        )
+        if records and records[-1].timestamp:
+            session.timestamp = records[-1].timestamp
+        else:
+            session.timestamp = lap.timestamp  # use same end time as lap (no-GPS case)
         session.start_time = datetime_to_fit_timestamp(start_time)
         session.sport = sport
         session.sub_sport = sub_sport

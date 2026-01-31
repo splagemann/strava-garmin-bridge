@@ -200,6 +200,10 @@ def poll_garmin_activities_task(self, lookback_days: int = 7, max_activities_per
         if not user.strava_auth or not user.garmin_auth:
             continue
 
+        from app.utils.user_settings import get_garmin_to_strava_sync_enabled
+        if not get_garmin_to_strava_sync_enabled(user, self.db):
+            continue
+
         try:
             garmin_service = GarminService(self.db)
             sync_service = GarminToStravaSyncService(self.db, user)
