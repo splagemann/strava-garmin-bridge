@@ -15,7 +15,7 @@ from app.models import ActivityFilter, SyncLog, User
 from app.services.garmin_service import GarminService
 from app.services.strava_service import StravaService
 from app.utils.activity_converter import ActivityConverter
-from app.utils.user_settings import get_allow_export_without_gps
+from app.utils.user_settings import get_allow_export_without_gps, get_fit_device_settings
 
 logger = logging.getLogger(__name__)
 
@@ -263,7 +263,10 @@ class SyncService:
 
             # 4. Convert to FIT format (converter supports no-GPS via summary + optional streams)
             logger.info(f"Converting activity to FIT format")
-            fit_data = self.converter.strava_to_fit(activity, streams)
+            device_settings = get_fit_device_settings(self.db, self.user.id)
+            fit_data = self.converter.strava_to_fit(
+                activity, streams, device_settings=device_settings
+            )
 
             # Store FIT data summary for debugging (not the full binary data)
             if isinstance(fit_data, bytes):
@@ -314,7 +317,13 @@ class SyncService:
                 upload_response = self.garmin_service.upload_activity(temp_file_path, ".fit")
 
                 if not upload_response:
-                    result["message"] = "Failed to upload activity to Garmin"
+                    result["message"] = "Failed to upload activity to Garmin (no response)"
+                    self._update_sync_log(sync_log, "failed", result["message"])
+                    return result
+                if upload_response.get("error"):
+                    msg = upload_response.get("message") or "Failed to upload activity to Garmin"
+                    details = upload_response.get("details")
+                    result["message"] = f"{msg}. {details}" if details else msg
                     self._update_sync_log(sync_log, "failed", result["message"])
                     return result
 
@@ -366,6 +375,27 @@ class SyncService:
                 logger.error(f"Error updating sync log: {update_error}")
 
         return result
+
+    def get_fit_bytes_for_strava_activity(self, strava_activity_id: int) -> Optional[bytes]:
+        """
+        Fetch activity and streams from Strava and generate FIT file bytes.
+        Used for download-from-sync-log (no upload, no sync log update).
+        """
+        try:
+            activity = self.strava_service.get_activity(self.user, strava_activity_id)
+            if not activity:
+                return None
+            streams = self.strava_service.get_activity_streams(self.user, strava_activity_id)
+            device_settings = get_fit_device_settings(self.db, self.user.id)
+            fit_data = self.converter.strava_to_fit(
+                activity, streams or {}, device_settings=device_settings
+            )
+            return fit_data if isinstance(fit_data, bytes) else None
+        except Exception as e:
+            logger.warning(
+                f"Failed to generate FIT for activity {strava_activity_id}: {e}", exc_info=True
+            )
+            return None
 
     def _update_sync_log(
         self, sync_log: SyncLog, status: str, message: str, garmin_activity_id: Optional[str] = None

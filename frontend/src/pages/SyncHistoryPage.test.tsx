@@ -9,10 +9,13 @@ vi.mock('../hooks/useSync', () => ({
   useSync: vi.fn(),
 }));
 
-// Mock syncApi
+// Mock api (syncApi + authApi for useAuth display_timezone)
 vi.mock('../api', () => ({
   syncApi: {
     getSyncLogDetails: vi.fn(),
+  },
+  authApi: {
+    getAuthStatus: vi.fn().mockResolvedValue({ display_timezone: 'UTC' }),
   },
 }));
 

@@ -11,6 +11,8 @@ type SyncDirection = 'strava_to_garmin' | 'garmin_to_strava';
 
 export default function DashboardPage() {
   const { authStatus, connectWithings } = useAuth();
+  const displayTimezone = authStatus?.display_timezone ?? 'UTC';
+  const hour12 = authStatus?.display_time_format !== '24h';
   const { syncStats, syncHistory, manualSync, isSyncing, refetch } = useSync();
   const [activeTab, setActiveTab] = useState<SyncDirection>('strava_to_garmin');
   const [stravaActivityId, setStravaActivityId] = useState('');
@@ -235,7 +237,7 @@ export default function DashboardPage() {
                   </span>
                 </div>
                 <div className="text-sm text-gray-500">
-                  {log.activity_type} • {formatRelativeTime(log.created_at)}
+                  {log.activity_type} • {formatRelativeTime(log.created_at, displayTimezone, hour12)}
                 </div>
               </div>
               <span

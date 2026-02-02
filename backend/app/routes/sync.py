@@ -3,10 +3,13 @@ Sync management routes.
 """
 
 import logging
+import os
+import tempfile
 from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
@@ -14,6 +17,7 @@ from app.database import get_db
 from app.utils.user_settings import get_garmin_to_strava_sync_enabled
 from app.middleware.auth import get_current_user
 from app.models import SyncLog, User
+from app.services.garmin_service import GarminService
 from app.services.garmin_to_strava_sync_service import GarminToStravaSyncService
 from app.services.sync_service import SyncService
 
@@ -241,6 +245,68 @@ async def get_sync_log_details(
         raise HTTPException(status_code=404, detail="Sync log not found")
 
     return sync_log
+
+
+@router.get("/history/{sync_log_id}/download-fit")
+async def download_sync_log_fit(
+    sync_log_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """
+    Download the FIT file for a successful sync log.
+    Strava → Garmin: regenerates FIT from Strava. Garmin → Strava: re-downloads from Garmin.
+    """
+    sync_log = (
+        db.query(SyncLog)
+        .filter(SyncLog.id == sync_log_id, SyncLog.user_id == current_user.id)
+        .first()
+    )
+    if not sync_log:
+        raise HTTPException(status_code=404, detail="Sync log not found")
+    if sync_log.status != "success":
+        raise HTTPException(status_code=400, detail="Only successful syncs can be downloaded")
+
+    activity_id = sync_log.source_activity_id
+    filename = f"activity-{activity_id}.fit"
+
+    if sync_log.sync_direction == "strava_to_garmin":
+        sync_service = SyncService(db, current_user)
+        fit_bytes = sync_service.get_fit_bytes_for_strava_activity(int(activity_id))
+        if not fit_bytes:
+            raise HTTPException(
+                status_code=502,
+                detail="Could not generate FIT file (activity or streams unavailable)",
+            )
+        return Response(
+            content=fit_bytes,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    if sync_log.sync_direction == "garmin_to_strava":
+        garmin_service = GarminService(db)
+        if not garmin_service.connect(current_user):
+            raise HTTPException(status_code=502, detail="Garmin not connected")
+        fd, temp_path = tempfile.mkstemp(suffix=".fit")
+        try:
+            os.close(fd)
+            path = garmin_service.download_activity_original(activity_id, temp_path)
+            if not path or not os.path.exists(path):
+                raise HTTPException(status_code=502, detail="Could not download FIT from Garmin")
+            with open(path, "rb") as f:
+                fit_bytes = f.read()
+            return Response(
+                content=fit_bytes,
+                media_type="application/octet-stream",
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
+        finally:
+            if os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
+
+    raise HTTPException(status_code=400, detail="Download not supported for this sync direction")
 
 
 @router.post("/history/{sync_log_id}/retry")

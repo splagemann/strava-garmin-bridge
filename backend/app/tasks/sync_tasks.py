@@ -15,6 +15,14 @@ from app.services.garmin_to_strava_sync_service import GarminToStravaSyncService
 from app.services.strava_service import StravaService
 from app.services.sync_service import SyncService
 from app.services.weight_sync_service import WeightSyncService
+from app.utils.user_settings import (
+    KEY_LAST_GARMIN_POLL_AT,
+    KEY_LAST_STRAVA_POLL_AT,
+    get_garmin_to_strava_sync_enabled,
+    get_last_poll_at,
+    get_sync_schedule_minutes,
+    set_last_poll_at,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -121,11 +129,21 @@ def poll_strava_activities_task(self, lookback_days: int = 7, max_activities_per
     lookback_start = datetime.now(timezone.utc) - timedelta(days=lookback_days)
 
     users = self.db.query(User).filter(User.is_active == True).all()
+    now = datetime.now(timezone.utc)
 
     for user in users:
         # Only process users with both Strava and Garmin connected
         if not user.strava_auth or not user.garmin_auth:
             continue
+
+        # Skip if user's sync schedule interval has not elapsed since last poll
+        interval_minutes = get_sync_schedule_minutes(self.db, user.id)
+        last_at = get_last_poll_at(self.db, user.id, KEY_LAST_STRAVA_POLL_AT)
+        if last_at is not None and (last_at + timedelta(minutes=interval_minutes)) > now:
+            continue
+
+        set_last_poll_at(self.db, user.id, KEY_LAST_STRAVA_POLL_AT, now)
+        self.db.commit()
 
         try:
             strava_service = StravaService(self.db)
@@ -194,15 +212,24 @@ def poll_garmin_activities_task(self, lookback_days: int = 7, max_activities_per
     lookback_start = datetime.now(timezone.utc) - timedelta(days=lookback_days)
 
     users = self.db.query(User).filter(User.is_active == True).all()
+    now = datetime.now(timezone.utc)
 
     for user in users:
         # Only process users with both Strava and Garmin connected
         if not user.strava_auth or not user.garmin_auth:
             continue
 
-        from app.utils.user_settings import get_garmin_to_strava_sync_enabled
         if not get_garmin_to_strava_sync_enabled(user, self.db):
             continue
+
+        # Skip if user's sync schedule interval has not elapsed since last Garmin poll
+        interval_minutes = get_sync_schedule_minutes(self.db, user.id)
+        last_at = get_last_poll_at(self.db, user.id, KEY_LAST_GARMIN_POLL_AT)
+        if last_at is not None and (last_at + timedelta(minutes=interval_minutes)) > now:
+            continue
+
+        set_last_poll_at(self.db, user.id, KEY_LAST_GARMIN_POLL_AT, now)
+        self.db.commit()
 
         try:
             garmin_service = GarminService(self.db)
@@ -313,14 +340,14 @@ def poll_withings_weight_task(self):
     Periodically poll Withings for new weight measurements and sync to Garmin.
     """
     logger.info("Starting periodic Withings weight poll")
-    
+
     users = self.db.query(User).filter(User.is_active == True).all()
 
     for user in users:
         # Only process users with both Withings and Garmin connected
         if not user.withings_auth or not user.garmin_auth:
             continue
-            
+
         try:
             sync_service = WeightSyncService(self.db)
             sync_service.sync_weight(user)

@@ -82,8 +82,9 @@ RDG3wCbonI_zTV0M6o9kIs8qe2jn8mL7JTDc05bxmQA=
 
 ## Step 4: Clone and Configure
 
-1. **Navigate to project directory**
+1. **Clone the repository and navigate to project directory**
 ```bash
+git clone <repo-url>
 cd strava-garmin-bridge
 ```
 

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useSync } from '../hooks/useSync';
+import { useAuth } from '../hooks/useAuth';
 import { syncApi } from '../api';
 import type { SyncLog, SyncLogDetails, BulkDeleteSyncLogsParams } from '../types';
 import { toast } from 'sonner';
@@ -7,12 +8,16 @@ import { formatDate } from '../lib/utils';
 import { SYNC_STATUS_COLORS, SYNC_STATUS_LABELS } from '../lib/constants';
 
 export default function SyncHistoryPage() {
+  const { authStatus } = useAuth();
+  const displayTimezone = authStatus?.display_timezone ?? 'UTC';
+  const hour12 = authStatus?.display_time_format !== '24h';
   const { syncHistory, retrySync, deleteSyncLog, bulkDeleteSyncLogs, isRetrying, isDeleting } = useSync();
   const [showBulkDelete, setShowBulkDelete] = useState(false);
   const [bulkDeleteStatus, setBulkDeleteStatus] = useState<string>('');
   const [directionFilter, setDirectionFilter] = useState<string>('all');
   const [selectedLogDetails, setSelectedLogDetails] = useState<SyncLogDetails | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [downloadingFitId, setDownloadingFitId] = useState<number | null>(null);
 
   // Filter sync history by direction
   const filteredHistory = syncHistory.filter((log: SyncLog) => {
@@ -71,6 +76,20 @@ export default function SyncHistoryPage() {
       toast.error(error.response?.data?.detail || 'Failed to load details');
     } finally {
       setLoadingDetails(false);
+    }
+  };
+
+  const handleDownloadFit = async (log: SyncLog) => {
+    if (log.status !== 'success') return;
+    setDownloadingFitId(log.id);
+    try {
+      await syncApi.downloadFit(log.id, log.source_activity_id);
+      toast.success('FIT file downloaded');
+    } catch (error: any) {
+      const detail = error.response?.data instanceof Blob ? 'Download failed' : (error.response?.data?.detail || 'Failed to download FIT');
+      toast.error(detail);
+    } finally {
+      setDownloadingFitId(null);
     }
   };
 
@@ -178,7 +197,7 @@ export default function SyncHistoryPage() {
                     {SYNC_STATUS_LABELS[log.status]}
                   </span>
                 </div>
-                <div className="text-sm text-gray-600">{formatDate(log.created_at)}</div>
+                <div className="text-sm text-gray-600">{formatDate(log.created_at, displayTimezone, hour12)}</div>
                 <div className="flex gap-2 flex-col">
                   <button
                     type="button"
@@ -188,6 +207,16 @@ export default function SyncHistoryPage() {
                   >
                     Details
                   </button>
+                  {log.status === 'success' && (
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadFit(log)}
+                      disabled={downloadingFitId !== null}
+                      className="text-sm text-green-600 hover:text-green-800 font-medium disabled:opacity-50 cursor-pointer"
+                    >
+                      {downloadingFitId === log.id ? 'Downloading…' : 'Download FIT'}
+                    </button>
+                  )}
                   {log.status === 'failed' && (
                     <button
                       type="button"
@@ -257,6 +286,10 @@ export default function SyncHistoryPage() {
                     <div><strong>Source Activity ID:</strong> {selectedLogDetails.source_activity_id}</div>
                     <div><strong>Target Activity ID:</strong> {selectedLogDetails.target_activity_id || 'N/A'}</div>
                     <div><strong>Status:</strong> {selectedLogDetails.status}</div>
+                    <div><strong>Created:</strong> {formatDate(selectedLogDetails.created_at, displayTimezone, hour12)}</div>
+                    {selectedLogDetails.completed_at && (
+                      <div><strong>Completed:</strong> {formatDate(selectedLogDetails.completed_at, displayTimezone, hour12)}</div>
+                    )}
                   </div>
                 </div>
 
@@ -334,7 +367,17 @@ export default function SyncHistoryPage() {
                 )}
               </div>
             </div>
-            <div className="px-6 py-4 border-t flex justify-end">
+            <div className="px-6 py-4 border-t flex justify-end gap-2">
+              {selectedLogDetails.status === 'success' && (
+                <button
+                  type="button"
+                  onClick={() => handleDownloadFit(selectedLogDetails as SyncLog)}
+                  disabled={downloadingFitId !== null}
+                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md font-medium disabled:opacity-50 cursor-pointer"
+                >
+                  {downloadingFitId === selectedLogDetails.id ? 'Downloading…' : 'Download FIT'}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setSelectedLogDetails(null)}

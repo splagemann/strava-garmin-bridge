@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { AuthStatus, GarminCredentials, GarminCredentialsResponse, ProfileUpdate, SettingsUpdate, StravaAuthResponse, StravaAuthUrlResponse, UserSettings, WithingsAuthResponse, WithingsAuthUrlResponse } from '../types';
+import type { AuthStatus, GarminCredentials, GarminCredentialsResponse, ProfileUpdate, SettingsUpdate, StravaAuthResponse, StravaAuthUrlResponse, UserSettings, WithingsAuthResponse, WithingsAuthUrlResponse } from '../types/auth';
 
 export const authApi = {
   /**
@@ -206,10 +206,10 @@ export const authApi = {
   },
 
   /**
-   * Update profile (email, display name)
+   * Update profile (email, display name, display_timezone)
    */
-  updateProfile: async (data: ProfileUpdate): Promise<{ email: string; username: string | null; first_name: string | null; last_name: string | null }> => {
-    const response = await apiClient.patch<{ email: string; username: string | null; first_name: string | null; last_name: string | null }>('/api/v1/auth/profile', data);
+  updateProfile: async (data: ProfileUpdate): Promise<{ email: string; username: string | null; first_name: string | null; last_name: string | null; display_timezone: string; display_time_format: string }> => {
+    const response = await apiClient.patch<{ email: string; username: string | null; first_name: string | null; last_name: string | null; display_timezone: string; display_time_format: string }>('/api/v1/auth/profile', data);
     return response.data;
   },
 

@@ -78,4 +78,20 @@ export const syncApi = {
     const response = await apiClient.get(`/api/v1/sync/history/${syncLogId}/details`);
     return response.data;
   },
+
+  /**
+   * Download FIT file for a successful sync log. Triggers a file download in the browser.
+   */
+  downloadFit: async (syncLogId: number, sourceActivityId: string): Promise<void> => {
+    const response = await apiClient.get(`/api/v1/sync/history/${syncLogId}/download-fit`, { responseType: 'blob' });
+    const blob = response.data as Blob;
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `activity-${sourceActivityId}.fit`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  },
 };

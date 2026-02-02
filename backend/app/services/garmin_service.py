@@ -79,13 +79,13 @@ class GarminService:
         """Remove expired MFA pending entries."""
         now = time.time()
         with _MFA_LOCK:
-            expired = [k for k, v in _MFA_PENDING.items() if (now - v["created_at"]) > _MFA_TTL_SECONDS]
+            expired = [
+                k for k, v in _MFA_PENDING.items() if (now - v["created_at"]) > _MFA_TTL_SECONDS
+            ]
             for k in expired:
                 del _MFA_PENDING[k]
 
-    def start_login_with_mfa(
-        self, user_id: int, email: str, password: str
-    ) -> Tuple[str, Any]:
+    def start_login_with_mfa(self, user_id: int, email: str, password: str) -> Tuple[str, Any]:
         """
         Start Garmin login; supports MFA by returning early when MFA is required.
 
@@ -130,9 +130,7 @@ class GarminService:
         logger.info("Garmin login succeeded without MFA")
         return "success", client
 
-    def complete_mfa(
-        self, mfa_token: str, mfa_code: str, user: User
-    ) -> Tuple[bool, Optional[str]]:
+    def complete_mfa(self, mfa_token: str, mfa_code: str, user: User) -> Tuple[bool, Optional[str]]:
         """
         Complete Garmin login with MFA code and save credentials + session.
 
@@ -148,7 +146,10 @@ class GarminService:
         with _MFA_LOCK:
             pending = _MFA_PENDING.pop(mfa_token, None)
         if not pending:
-            return False, "MFA session expired or invalid. Please submit your Garmin credentials again."
+            return (
+                False,
+                "MFA session expired or invalid. Please submit your Garmin credentials again.",
+            )
 
         now = time.time()
         if (now - pending["created_at"]) > _MFA_TTL_SECONDS:
@@ -171,19 +172,33 @@ class GarminService:
             msg = str(e).strip() if str(e) else ""
             logger.warning(f"MFA completion (Garth) for user {user.id}: {e}")
             if "csrf" in msg.lower() or "session" in msg.lower() or "expired" in msg.lower():
-                return False, "Session expired. Please re-enter your Garmin credentials and try the code again."
+                return (
+                    False,
+                    "Session expired. Please re-enter your Garmin credentials and try the code again.",
+                )
             if "mfa" in msg.lower() or "code" in msg.lower() or "invalid" in msg.lower():
                 return False, "Invalid MFA code. Please try again."
             if msg and len(msg) < 120 and "traceback" not in msg.lower():
                 return False, f"MFA verification failed: {msg}"
-            return False, "MFA verification failed. Please re-enter your Garmin credentials and try the code again."
+            return (
+                False,
+                "MFA verification failed. Please re-enter your Garmin credentials and try the code again.",
+            )
         except AssertionError as e:
             logger.warning(f"MFA completion assertion for user {user.id}: {e}")
-            return False, "Session expired or invalid. Please re-enter your Garmin credentials and try again."
+            return (
+                False,
+                "Session expired or invalid. Please re-enter your Garmin credentials and try again.",
+            )
         except Exception as e:
             logger.exception(f"MFA completion error for user {user.id}: {type(e).__name__}: {e}")
             err_msg = str(e).strip() if str(e) else ""
-            if err_msg and len(err_msg) < 100 and "\n" not in err_msg and "traceback" not in err_msg.lower():
+            if (
+                err_msg
+                and len(err_msg) < 100
+                and "\n" not in err_msg
+                and "traceback" not in err_msg.lower()
+            ):
                 return False, f"Verification failed: {err_msg}"
             return False, (
                 "Verification failed. Try re-entering your Garmin credentials, then enter the new code from your app quickly."
@@ -310,19 +325,16 @@ class GarminService:
             logger.info(f"Uploading activity from {file_path}")
             upload_response = self.client.upload_activity(file_path)
 
-            logger.info(f"Upload response type: {type(upload_response)}")
-            logger.info(f"Upload response: {upload_response}")
-
-            # Parse response to extract activity ID
-            # Response format varies, could be dict or object with activity_id
+            # Return the JSON: Response object -> .json(), else dict as-is
+            if hasattr(upload_response, "json") and callable(getattr(upload_response, "json")):
+                return upload_response.json() if getattr(upload_response, "content", None) else {}
             if isinstance(upload_response, dict):
                 return upload_response
-            elif hasattr(upload_response, "__dict__"):
-                # Convert object to dict
-                return vars(upload_response)
-            else:
-                # Return as-is wrapped in dict
-                return {"raw_response": upload_response}
+            return (
+                vars(upload_response)
+                if hasattr(upload_response, "__dict__")
+                else {"raw_response": upload_response}
+            )
 
         except GarminConnectConnectionError as e:
             logger.error(f"Connection error uploading activity: {e}", exc_info=True)
@@ -552,21 +564,18 @@ class GarminService:
 
         try:
             logger.info(f"Uploading weight {weight_kg}kg to Garmin")
-            
-            # Timestamp format expected by garminconnect is not strictly documented in the method signature 
-            # we saw earlier (it said str | None), but usually it handles it. 
+
+            # Timestamp format expected by garminconnect is not strictly documented in the method signature
+            # we saw earlier (it said str | None), but usually it handles it.
             # If None, it uses current time.
-            
+
             # garminconnect.add_body_composition(timestamp, weight, ...)
             # timestamp can be ISO string or None
-            
+
             ts_str = timestamp.isoformat() if timestamp else None
-            
-            self.client.add_body_composition(
-                timestamp=ts_str,
-                weight=weight_kg
-            )
-            
+
+            self.client.add_body_composition(timestamp=ts_str, weight=weight_kg)
+
             logger.info("Successfully uploaded weight to Garmin")
             return True
 

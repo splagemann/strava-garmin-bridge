@@ -211,7 +211,16 @@ class StravaService:
             return None
 
         try:
-            types = ["time", "latlng", "altitude", "heartrate", "cadence", "watts", "temp"]
+            types = [
+                "time",
+                "latlng",
+                "altitude",
+                "heartrate",
+                "cadence",
+                "watts",
+                "temp",
+                "velocity_smooth",
+            ]
             streams = client.get_activity_streams(activity_id, types=types)
             return streams
         except Exception as e:

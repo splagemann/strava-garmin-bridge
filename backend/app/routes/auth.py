@@ -14,10 +14,19 @@ from app.config import settings
 from app.database import get_db
 from app.utils.user_settings import (
     KEY_ALLOW_EXPORT_WITHOUT_GPS,
+    KEY_DISPLAY_TIME_FORMAT,
+    KEY_DISPLAY_TIMEZONE,
     KEY_GARMIN_TO_STRAVA_SYNC_DISABLED,
+    KEY_SYNC_SCHEDULE_MINUTES,
+    SYNC_SCHEDULE_CHOICES,
     get_allow_export_without_gps,
+    get_display_time_format,
+    get_display_timezone,
+    get_fit_device_settings,
     get_garmin_to_strava_sync_enabled,
     get_setting_override_bool,
+    get_sync_schedule_minutes,
+    set_fit_device_settings,
     set_setting,
 )
 from app.middleware.auth import get_current_user
@@ -45,20 +54,36 @@ class GarminMFAVerify(BaseModel):
     mfa_code: str
 
 
+class FitDeviceSettingsBody(BaseModel):
+    """FIT device settings (user-level): written into FIT files on export."""
+
+    device_name: Optional[str] = None
+    serial_number: Optional[str] = None
+    manufacturer_id: Optional[str] = None
+    software_version: Optional[str] = None
+    product_id: Optional[str] = None
+
+
 class SettingsUpdate(BaseModel):
     """Request model for user settings update."""
 
-    garmin_to_strava_sync_disabled: Optional[bool] = None  # None = use server default (True = sync off)
+    garmin_to_strava_sync_disabled: Optional[bool] = (
+        None  # None = use server default (True = sync off)
+    )
     allow_export_without_gps: Optional[bool] = None  # None = use server default
+    sync_schedule_minutes: Optional[int] = None  # One of 5, 10, 15, 30, 45, 60, 120, 240; default 5
+    fit_device_settings: Optional[FitDeviceSettingsBody] = None
 
 
 class ProfileUpdate(BaseModel):
-    """Request model for profile update (email, username, first_name, last_name)."""
+    """Request model for profile update (email, username, first_name, last_name, display_timezone, display_time_format)."""
 
     email: Optional[str] = None
     username: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    display_timezone: Optional[str] = None
+    display_time_format: Optional[str] = None  # "12h" or "24h"
 
 
 class WithingsAuthRequest(BaseModel):
@@ -215,9 +240,7 @@ async def save_garmin_credentials(
     # Login succeeded without MFA; save credentials and session
     garmin_client = data
     try:
-        garmin_auth = garmin_service.save_credentials(
-            user, credentials.email, credentials.password
-        )
+        garmin_auth = garmin_service.save_credentials(user, credentials.email, credentials.password)
         garmin_auth.session_data = garmin_client.garth.dumps()
         db.commit()
     except Exception as e:
@@ -259,7 +282,7 @@ async def get_withings_auth_url():
         logger.info(f"Generating Withings auth URL with redirect_uri: {redirect_uri}")
 
         auth_url, state = WithingsService.get_authorization_url(redirect_uri)
-        
+
         return {"auth_url": auth_url, "state": state}
     except Exception as e:
         logger.error(f"Error generating Withings auth URL: {e}", exc_info=True)
@@ -270,7 +293,7 @@ async def get_withings_auth_url():
 async def exchange_withings_code(
     auth_request: WithingsAuthRequest,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Exchange Withings authorization code for access token.
@@ -278,15 +301,15 @@ async def exchange_withings_code(
     try:
         # Verify state
         if not verify_state_token(auth_request.signed_state, auth_request.state):
-             raise HTTPException(status_code=400, detail="Invalid state token")
+            raise HTTPException(status_code=400, detail="Invalid state token")
 
         withings_service = WithingsService(db)
         redirect_uri = f"{settings.FRONTEND_URL}/auth/withings/callback"
-        
+
         token_response = withings_service.exchange_code_for_token(auth_request.code, redirect_uri)
-        
+
         withings_service.save_auth(current_user, token_response)
-        
+
         return {"message": "Withings connected successfully"}
     except Exception as e:
         logger.error(f"Error exchanging Withings code: {e}", exc_info=True)
@@ -308,6 +331,8 @@ async def auth_status(
         "username": current_user.username,
         "first_name": current_user.first_name,
         "last_name": current_user.last_name,
+        "display_timezone": get_display_timezone(db, current_user.id),
+        "display_time_format": get_display_time_format(db, current_user.id),
         "strava_connected": current_user.strava_auth is not None,
         "garmin_connected": current_user.garmin_auth is not None,
         "withings_connected": current_user.withings_auth is not None,
@@ -344,6 +369,13 @@ async def update_profile(
         user.first_name = body.first_name.strip() or None
     if body.last_name is not None:
         user.last_name = body.last_name.strip() or None
+    if body.display_timezone is not None:
+        tz = (body.display_timezone or "").strip() or "UTC"
+        set_setting(db, user.id, KEY_DISPLAY_TIMEZONE, tz[:64])
+    if body.display_time_format is not None:
+        fmt = (body.display_time_format or "").strip().lower()
+        if fmt in ("12h", "24h"):
+            set_setting(db, user.id, KEY_DISPLAY_TIME_FORMAT, fmt)
     db.commit()
     db.refresh(user)
     return {
@@ -351,6 +383,8 @@ async def update_profile(
         "username": user.username,
         "first_name": user.first_name,
         "last_name": user.last_name,
+        "display_timezone": get_display_timezone(db, user.id),
+        "display_time_format": get_display_time_format(db, user.id),
     }
 
 
@@ -364,11 +398,24 @@ async def get_settings(
     Returns effective values and user overrides (null = using server default).
     """
     enabled = get_garmin_to_strava_sync_enabled(current_user, db)
+    device = get_fit_device_settings(db, current_user.id)
     return {
         "garmin_to_strava_sync_disabled": not enabled,
-        "garmin_to_strava_sync_disabled_override": get_setting_override_bool(db, current_user.id, KEY_GARMIN_TO_STRAVA_SYNC_DISABLED),
+        "garmin_to_strava_sync_disabled_override": get_setting_override_bool(
+            db, current_user.id, KEY_GARMIN_TO_STRAVA_SYNC_DISABLED
+        ),
         "allow_export_without_gps": get_allow_export_without_gps(current_user, db),
-        "allow_export_without_gps_override": get_setting_override_bool(db, current_user.id, KEY_ALLOW_EXPORT_WITHOUT_GPS),
+        "allow_export_without_gps_override": get_setting_override_bool(
+            db, current_user.id, KEY_ALLOW_EXPORT_WITHOUT_GPS
+        ),
+        "sync_schedule_minutes": get_sync_schedule_minutes(db, current_user.id),
+        "fit_device_settings": {
+            "device_name": device.get("device_name") or None,
+            "serial_number": device.get("serial_number") or None,
+            "manufacturer_id": device.get("manufacturer_id") or None,
+            "software_version": device.get("software_version") or None,
+            "product_id": device.get("product_id") or None,
+        },
     }
 
 
@@ -384,16 +431,51 @@ async def update_settings(
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         if body.garmin_to_strava_sync_disabled is not None:
-            set_setting(db, user.id, KEY_GARMIN_TO_STRAVA_SYNC_DISABLED, "true" if body.garmin_to_strava_sync_disabled else "false")
+            set_setting(
+                db,
+                user.id,
+                KEY_GARMIN_TO_STRAVA_SYNC_DISABLED,
+                "true" if body.garmin_to_strava_sync_disabled else "false",
+            )
         if body.allow_export_without_gps is not None:
-            set_setting(db, user.id, KEY_ALLOW_EXPORT_WITHOUT_GPS, "true" if body.allow_export_without_gps else "false")
+            set_setting(
+                db,
+                user.id,
+                KEY_ALLOW_EXPORT_WITHOUT_GPS,
+                "true" if body.allow_export_without_gps else "false",
+            )
+        if body.sync_schedule_minutes is not None:
+            if body.sync_schedule_minutes in SYNC_SCHEDULE_CHOICES:
+                set_setting(db, user.id, KEY_SYNC_SCHEDULE_MINUTES, str(body.sync_schedule_minutes))
+            # else ignore invalid value
+        if body.fit_device_settings is not None:
+            data = get_fit_device_settings(db, user.id)
+            for k, v in body.fit_device_settings.model_dump().items():
+                if v is not None and (isinstance(v, str) and v.strip()):
+                    data[k] = v.strip()
+                elif k in data:
+                    data.pop(k, None)
+            set_fit_device_settings(db, user.id, data)
         db.commit()
         enabled = get_garmin_to_strava_sync_enabled(user, db)
+        device = get_fit_device_settings(db, user.id)
         return {
             "garmin_to_strava_sync_disabled": not enabled,
-            "garmin_to_strava_sync_disabled_override": get_setting_override_bool(db, user.id, KEY_GARMIN_TO_STRAVA_SYNC_DISABLED),
+            "garmin_to_strava_sync_disabled_override": get_setting_override_bool(
+                db, user.id, KEY_GARMIN_TO_STRAVA_SYNC_DISABLED
+            ),
             "allow_export_without_gps": get_allow_export_without_gps(user, db),
-            "allow_export_without_gps_override": get_setting_override_bool(db, user.id, KEY_ALLOW_EXPORT_WITHOUT_GPS),
+            "allow_export_without_gps_override": get_setting_override_bool(
+                db, user.id, KEY_ALLOW_EXPORT_WITHOUT_GPS
+            ),
+            "sync_schedule_minutes": get_sync_schedule_minutes(db, user.id),
+            "fit_device_settings": {
+                "device_name": device.get("device_name") or None,
+                "serial_number": device.get("serial_number") or None,
+                "manufacturer_id": device.get("manufacturer_id") or None,
+                "software_version": device.get("software_version") or None,
+                "product_id": device.get("product_id") or None,
+            },
         }
     except HTTPException:
         db.rollback()
@@ -402,6 +484,11 @@ async def update_settings(
         db.rollback()
         logger.exception("Failed to update user settings")
         msg = str(e)
-        if "garmin_to_strava_sync" in msg or "allow_export_without_gps" in msg or "does not exist" in msg or "column" in msg.lower():
+        if (
+            "garmin_to_strava_sync" in msg
+            or "allow_export_without_gps" in msg
+            or "does not exist" in msg
+            or "column" in msg.lower()
+        ):
             msg = "Database schema may be outdated. Run: alembic upgrade head"
         raise HTTPException(status_code=500, detail=msg)

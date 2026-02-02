@@ -3,6 +3,7 @@ import type { Activity } from '../api/activities';
 import { activitiesApi } from '../api/activities';
 import { syncApi } from '../api/sync';
 import { useAuth } from '../hooks/useAuth';
+import { formatDateOnly, formatTime } from '../lib/utils';
 import { toast } from 'sonner';
 
 interface ActivitiesListProps {
@@ -12,6 +13,8 @@ interface ActivitiesListProps {
 export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
   const { authStatus } = useAuth();
   const garminToStravaEnabled = authStatus?.garmin_to_strava_sync_disabled !== true;
+  const displayTimezone = authStatus?.display_timezone ?? 'UTC';
+  const hour12 = authStatus?.display_time_format !== '24h';
 
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,23 +61,6 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
       return `${hours}h ${minutes}m`;
     }
     return `${minutes}m`;
-  };
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  };
-
-  const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
   };
 
   const handleSync = async (activity: Activity) => {
@@ -212,7 +198,7 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
                           d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
                         />
                       </svg>
-                      {formatDate(activity.start_date)}
+                      {formatDateOnly(activity.start_date, displayTimezone)}
                     </span>
                     <span className="flex items-center gap-1">
                       <svg
@@ -228,7 +214,7 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
                           d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                         />
                       </svg>
-                      {formatTime(activity.start_date)}
+                      {formatTime(activity.start_date, displayTimezone, hour12)}
                     </span>
                   </div>
                 </div>

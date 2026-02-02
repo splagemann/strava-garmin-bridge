@@ -3,12 +3,25 @@ import { useAuth } from '../hooks/useAuth';
 import { toast } from 'sonner';
 import { authApi } from '../api/auth';
 
+function getDisplayTimezoneOptions(): { value: string; label: string }[] {
+  const utc = { value: 'UTC', label: 'UTC' };
+  if (typeof Intl?.supportedValuesOf !== 'function') return [utc];
+  const rest = Intl.supportedValuesOf('timeZone')
+    .filter((tz) => tz !== 'UTC')
+    .sort()
+    .map((tz) => ({ value: tz, label: tz }));
+  return [utc, ...rest];
+}
+const DISPLAY_TIMEZONE_OPTIONS = getDisplayTimezoneOptions();
+
 export default function ProfilePage() {
   const { authStatus, refetchAuthStatus } = useAuth();
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [displayTimezone, setDisplayTimezone] = useState('UTC');
+  const [displayTimeFormat, setDisplayTimeFormat] = useState<'12h' | '24h'>('12h');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -17,6 +30,8 @@ export default function ProfilePage() {
       setUsername(authStatus.username ?? '');
       setFirstName(authStatus.first_name ?? '');
       setLastName(authStatus.last_name ?? '');
+      setDisplayTimezone(authStatus.display_timezone ?? 'UTC');
+      setDisplayTimeFormat((authStatus.display_time_format === '24h' ? '24h' : '12h'));
     }
   }, [authStatus]);
 
@@ -29,6 +44,8 @@ export default function ProfilePage() {
         username: username.trim() || null,
         first_name: firstName.trim() || null,
         last_name: lastName.trim() || null,
+        display_timezone: displayTimezone || 'UTC',
+        display_time_format: displayTimeFormat,
       });
       toast.success('Profile updated');
       refetchAuthStatus();
@@ -98,6 +115,36 @@ export default function ProfilePage() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
+          </div>
+          <div>
+            <label htmlFor="profile-display-timezone" className="block text-sm font-medium text-gray-700 mb-1">
+              Display timezone
+            </label>
+            <select
+              id="profile-display-timezone"
+              value={displayTimezone}
+              onChange={(e) => setDisplayTimezone(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              {DISPLAY_TIMEZONE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">Used for dates in Sync History and elsewhere. Stored times are UTC.</p>
+          </div>
+          <div>
+            <label htmlFor="profile-display-time-format" className="block text-sm font-medium text-gray-700 mb-1">
+              Time format
+            </label>
+            <select
+              id="profile-display-time-format"
+              value={displayTimeFormat}
+              onChange={(e) => setDisplayTimeFormat(e.target.value as '12h' | '24h')}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="12h">12-hour (AM/PM)</option>
+              <option value="24h">24-hour</option>
+            </select>
           </div>
           <button
             type="submit"

@@ -4,9 +4,9 @@ uvicorn[standard]==0.24.0
 python-multipart==0.0.6
 
 # Database
-sqlalchemy==2.0.23
+sqlalchemy==2.0.46
 alembic==1.12.1
-psycopg2-binary==2.9.9
+psycopg2-binary==2.9.11
 
 # Strava Integration
 stravalib>=2.0.0
