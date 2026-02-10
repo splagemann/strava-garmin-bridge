@@ -98,5 +98,9 @@ docker-compose.override.yml
 tmp/
 temp/
 
+# Cache and uploads
+backend/data/cache/
+backend/data/uploads/
+
 # Pre-commit
 .pre-commit-config.yaml.bak

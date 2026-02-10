@@ -15,7 +15,11 @@ from app.models import ActivityFilter, SyncLog, User
 from app.services.garmin_service import GarminService
 from app.services.strava_service import StravaService
 from app.utils.activity_converter import ActivityConverter
-from app.utils.user_settings import get_allow_export_without_gps, get_fit_device_settings
+from app.utils.file_storage import save_uploaded_file
+from app.utils.user_settings import (
+    get_allow_export_without_gps,
+    get_fit_device_settings,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -261,15 +265,21 @@ class SyncService:
                     f"No GPS stream for activity {strava_activity_id}; syncing as summary-only (indoor/manual)"
                 )
 
-            # 4. Convert to FIT format (converter supports no-GPS via summary + optional streams)
-            logger.info(f"Converting activity to FIT format")
+            # 4. Build FIT from streams
+            logger.info("Converting activity to FIT format")
             device_settings = get_fit_device_settings(self.db, self.user.id)
             fit_data = self.converter.strava_to_fit(
                 activity, streams, device_settings=device_settings
             )
 
-            # Store FIT data summary for debugging (not the full binary data)
+            file_bytes = None
+            file_extension = None
+
             if isinstance(fit_data, bytes):
+                file_bytes = fit_data
+                file_extension = "fit"
+
+                # Store FIT data summary for debugging (not the full binary data)
                 num_points = (
                     len(streams.get("latlng").data)
                     if streams and "latlng" in streams and streams.get("latlng")
@@ -294,14 +304,48 @@ class SyncService:
                         else None
                     ),
                 }
-                sync_log.gpx_data = str(fit_summary)
+                sync_log.garmin_data = str(fit_summary)
             else:
-                sync_log.gpx_data = str(fit_data)
-            self.db.commit()
+                sync_log.garmin_data = str(fit_data)
+                result["message"] = "Failed to generate FIT file"
+                self._update_sync_log(sync_log, "failed", result["message"])
+                return result
+
+            if not file_bytes or not file_extension:
+                result["message"] = "Failed to prepare file for upload"
+                self._update_sync_log(sync_log, "failed", result["message"])
+                return result
+
+            # Store file to disk for download feature (before upload)
+            try:
+                # Ensure extension is clean (lowercase, no whitespace)
+                file_extension = file_extension.strip().lower() if file_extension else None
+
+                logger.info(
+                    f"Saving file for sync_log {sync_log.id}: "
+                    f"extension={file_extension}, size={len(file_bytes)} bytes"
+                )
+
+                if not file_extension:
+                    logger.error(f"File extension is None or empty for sync_log {sync_log.id}")
+                    raise ValueError("File extension cannot be None or empty")
+
+                file_path = save_uploaded_file(file_bytes, sync_log.id, file_extension)
+                sync_log.uploaded_file_path = file_path
+                sync_log.uploaded_file_extension = file_extension
+                self.db.commit()
+                logger.info(
+                    f"Saved file: path={file_path}, extension={sync_log.uploaded_file_extension}"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to save file to disk: {e}", exc_info=True)
+                # Continue with sync even if file storage fails
 
             # 5. Save to temporary file
-            with tempfile.NamedTemporaryFile(mode="wb", suffix=".fit", delete=False) as temp_file:
-                temp_file.write(fit_data)
+            with tempfile.NamedTemporaryFile(
+                mode="wb", suffix=f".{file_extension}", delete=False
+            ) as temp_file:
+                temp_file.write(file_bytes)
                 temp_file_path = temp_file.name
 
             try:
@@ -313,8 +357,10 @@ class SyncService:
                     return result
 
                 # 7. Upload to Garmin
-                logger.info(f"Uploading activity to Garmin Connect")
-                upload_response = self.garmin_service.upload_activity(temp_file_path, ".fit")
+                logger.info(f"Uploading activity to Garmin Connect (format: {file_extension})")
+                upload_response = self.garmin_service.upload_activity(
+                    temp_file_path, f".{file_extension}"
+                )
 
                 if not upload_response:
                     result["message"] = "Failed to upload activity to Garmin (no response)"
@@ -342,6 +388,30 @@ class SyncService:
                 result["status"] = "success"
                 result["message"] = "Activity synced successfully"
                 result["garmin_activity_id"] = garmin_activity_id
+
+                # Store Garmin upload response in garmin_data (extend existing summary if present)
+                try:
+                    import json
+
+                    existing_data = {}
+                    if sync_log.garmin_data:
+                        try:
+                            # Try to parse existing garmin_data as JSON
+                            existing_data = json.loads(
+                                sync_log.garmin_data.replace("'", '"')
+                                .replace("None", "null")
+                                .replace("True", "true")
+                                .replace("False", "false")
+                            )
+                        except Exception:
+                            # If parsing fails, keep as summary string
+                            existing_data = {"summary": sync_log.garmin_data}
+
+                    # Add Garmin response
+                    existing_data["garmin_upload_response"] = upload_response
+                    sync_log.garmin_data = json.dumps(existing_data, default=str)
+                except Exception as e:
+                    logger.warning(f"Failed to store Garmin upload response: {e}")
 
                 self._update_sync_log(
                     sync_log,

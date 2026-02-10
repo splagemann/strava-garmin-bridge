@@ -143,6 +143,12 @@ class StravaService:
 
         client = Client()
         client.access_token = strava_auth.access_token
+        client.refresh_token = strava_auth.refresh_token
+        # Set client_id and client_secret so stravalib can auto-refresh if needed
+        client.client_id = settings.STRAVA_CLIENT_ID
+        client.client_secret = settings.STRAVA_CLIENT_SECRET
+        # Set token_expires timestamp (Unix timestamp) to enable auto-refresh
+        client.token_expires = int(strava_auth.expires_at.timestamp())
         return client
 
     def _refresh_token(self, strava_auth: StravaAuth) -> StravaAuth:

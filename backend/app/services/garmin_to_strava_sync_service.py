@@ -267,9 +267,23 @@ class GarminToStravaSyncService:
                 self._update_sync_log(sync_log, "failed", result["message"])
                 return result
 
-            # Store FIT file info
+            # Store FIT file info and save to disk for download feature
             fit_size = os.path.getsize(fit_file_path)
-            sync_log.gpx_data = f"FIT file downloaded: {fit_size} bytes"
+            sync_log.garmin_data = f"FIT file downloaded: {fit_size} bytes"
+            
+            # Read file bytes and save to disk
+            with open(fit_file_path, "rb") as f:
+                fit_bytes = f.read()
+            
+            try:
+                from app.utils.file_storage import save_uploaded_file
+                file_path = save_uploaded_file(fit_bytes, sync_log.id, "fit")
+                sync_log.uploaded_file_path = file_path
+                sync_log.uploaded_file_extension = "fit"
+            except Exception as e:
+                logger.warning(f"Failed to save file to disk: {e}", exc_info=True)
+                # Continue with sync even if file storage fails
+            
             self.db.commit()
 
             # 4b. If FIT has no GPS, respect "Enable export without GPS" (same setting as Strava→Garmin)

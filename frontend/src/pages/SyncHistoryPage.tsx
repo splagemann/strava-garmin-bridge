@@ -180,8 +180,8 @@ export default function SyncHistoryPage() {
                 </div>
                 <div>
                   <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700 font-medium">
-                    {log.sync_direction === 'strava_to_garmin' 
-                      ? 'S → G' 
+                    {log.sync_direction === 'strava_to_garmin'
+                      ? 'S → G'
                       : log.sync_direction === 'garmin_to_strava'
                         ? 'G → S'
                         : 'W → G'}
@@ -254,7 +254,7 @@ export default function SyncHistoryPage() {
 
       {/* Details Modal */}
       {selectedLogDetails && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
             <div className="px-6 py-4 border-b flex justify-between items-center">
               <h2 className="text-xl font-bold">Sync Details</h2>
@@ -277,14 +277,19 @@ export default function SyncHistoryPage() {
                     <div><strong>Activity Name:</strong> {selectedLogDetails.activity_name || 'N/A'}</div>
                     <div><strong>Activity Type:</strong> {selectedLogDetails.activity_type || 'N/A'}</div>
                     <div><strong>Sync Direction:</strong> {
-                      selectedLogDetails.sync_direction === 'strava_to_garmin' 
-                        ? 'Strava → Garmin' 
+                      selectedLogDetails.sync_direction === 'strava_to_garmin'
+                        ? 'Strava → Garmin'
                         : selectedLogDetails.sync_direction === 'garmin_to_strava'
                           ? 'Garmin → Strava'
                           : 'Withings → Garmin'
                     }</div>
                     <div><strong>Source Activity ID:</strong> {selectedLogDetails.source_activity_id}</div>
-                    <div><strong>Target Activity ID:</strong> {selectedLogDetails.target_activity_id || 'N/A'}</div>
+                    <div><strong>Target Activity ID:</strong> {
+                      selectedLogDetails.target_activity_id || selectedLogDetails.garmin_activity_id || 'N/A'
+                    }</div>
+                    {selectedLogDetails.uploaded_file_extension && (
+                      <div><strong>File Type Sent:</strong> {selectedLogDetails.uploaded_file_extension.toUpperCase()}</div>
+                    )}
                     <div><strong>Status:</strong> {selectedLogDetails.status}</div>
                     <div><strong>Created:</strong> {formatDate(selectedLogDetails.created_at, displayTimezone, hour12)}</div>
                     {selectedLogDetails.completed_at && (
@@ -305,49 +310,96 @@ export default function SyncHistoryPage() {
                   </div>
                 ) : null}
 
-                {/* FIT Data Summary */}
-                {selectedLogDetails.gpx_data && (
+                {/* File Summary and Garmin Response */}
+                {selectedLogDetails.garmin_data && (
                   <div>
-                    <h3 className="text-lg font-semibold mb-2">FIT File Sent to Garmin</h3>
+                    <h3 className="text-lg font-semibold mb-2">File Information & Garmin Response</h3>
                     <div className="bg-gray-50 p-4 rounded">
                       {(() => {
                         try {
-                          // Try to parse as Python dict string (e.g., "{'format': 'FIT', ...}")
-                          const cleaned = selectedLogDetails.gpx_data
-                            .replace(/'/g, '"')  // Replace single quotes with double quotes
-                            .replace(/None/g, 'null')  // Replace None with null
-                            .replace(/True/g, 'true')  // Replace True with true
-                            .replace(/False/g, 'false');  // Replace False with false
-                          const fitData = JSON.parse(cleaned);
+                          // Try to parse as JSON (could be Python dict string or JSON)
+                          let cleaned = selectedLogDetails.garmin_data;
+                          if (!cleaned.startsWith('{')) {
+                            // Try to parse as Python dict string (e.g., "{'format': 'FIT', ...}")
+                            cleaned = cleaned
+                              .replace(/'/g, '"')  // Replace single quotes with double quotes
+                              .replace(/None/g, 'null')  // Replace None with null
+                              .replace(/True/g, 'true')  // Replace True with true
+                              .replace(/False/g, 'false');  // Replace False with false
+                          }
+                          const data = JSON.parse(cleaned);
 
                           return (
-                            <div className="space-y-2">
-                              <div><strong>Format:</strong> {fitData.format}</div>
-                              <div><strong>File Size:</strong> {(fitData.size_bytes / 1024).toFixed(2)} KB</div>
-                              <div><strong>GPS Points:</strong> {fitData.num_gps_points?.toLocaleString()}</div>
-                              <div><strong>Activity Type:</strong> {fitData.activity_type}</div>
-                              <div><strong>Sport:</strong> {fitData.sport}</div>
-                              {fitData.duration_seconds && (
-                                <div><strong>Duration:</strong> {Math.floor(fitData.duration_seconds / 60)} minutes {Math.floor(fitData.duration_seconds % 60)} seconds</div>
+                            <div className="space-y-4">
+                              {/* File Summary */}
+                              {data.format && (
+                                <div>
+                                  <h4 className="font-semibold mb-2">File Sent to Garmin</h4>
+                                  <div className="space-y-2 pl-4 border-l-2 border-gray-300">
+                                    <div><strong>Format:</strong> {data.format}</div>
+                                    {data.size_bytes && (
+                                      <div><strong>File Size:</strong> {(data.size_bytes / 1024).toFixed(2)} KB</div>
+                                    )}
+                                    {data.num_gps_points !== undefined && (
+                                      <div><strong>GPS Points:</strong> {data.num_gps_points?.toLocaleString()}</div>
+                                    )}
+                                    {data.activity_type && (
+                                      <div><strong>Activity Type:</strong> {data.activity_type}</div>
+                                    )}
+                                    {data.sport && (
+                                      <div><strong>Sport:</strong> {data.sport}</div>
+                                    )}
+                                    {data.duration_seconds && (
+                                      <div><strong>Duration:</strong> {Math.floor(data.duration_seconds / 60)} minutes {Math.floor(data.duration_seconds % 60)} seconds</div>
+                                    )}
+                                    {data.distance_meters && (
+                                      <div><strong>Distance:</strong> {(data.distance_meters / 1000).toFixed(2)} km</div>
+                                    )}
+                                    {data.source && (
+                                      <div><strong>Source:</strong> {data.source}</div>
+                                    )}
+                                    {data.fallback && (
+                                      <div className="text-yellow-600"><strong>Note:</strong> Fallback to FIT generation</div>
+                                    )}
+                                  </div>
+                                </div>
                               )}
-                              {fitData.distance_meters && (
-                                <div><strong>Distance:</strong> {(fitData.distance_meters / 1000).toFixed(2)} km</div>
+
+                              {/* Garmin Upload Response */}
+                              {data.garmin_upload_response && (
+                                <div>
+                                  <h4 className="font-semibold mb-2">Garmin Upload Response</h4>
+                                  <div className="bg-blue-50 p-3 rounded border-l-2 border-blue-400">
+                                    <pre className="text-xs overflow-x-auto whitespace-pre-wrap">
+                                      {JSON.stringify(data.garmin_upload_response, null, 2)}
+                                    </pre>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Legacy format (if no format field) */}
+                              {!data.format && !data.garmin_upload_response && (
+                                <div className="space-y-2">
+                                  {Object.entries(data).map(([key, value]) => (
+                                    <div key={key}><strong>{key}:</strong> {String(value)}</div>
+                                  ))}
+                                </div>
                               )}
                             </div>
                           );
                         } catch (e) {
                           // If parsing fails, show as plain text (legacy data or hex)
-                          const isHex = /^[0-9a-f]+$/i.test(selectedLogDetails.gpx_data);
-                          if (isHex && selectedLogDetails.gpx_data.length > 1000) {
+                          const isHex = /^[0-9a-f]+$/i.test(selectedLogDetails.garmin_data);
+                          if (isHex && selectedLogDetails.garmin_data.length > 1000) {
                             return (
                               <div className="text-sm text-gray-600">
-                                FIT file (binary data): {(selectedLogDetails.gpx_data.length / 2 / 1024).toFixed(2)} KB
+                                File (binary data): {(selectedLogDetails.garmin_data.length / 2 / 1024).toFixed(2)} KB
                               </div>
                             );
                           }
                           return (
                             <pre className="text-xs overflow-x-auto whitespace-pre-wrap max-h-96">
-                              {selectedLogDetails.gpx_data}
+                              {selectedLogDetails.garmin_data}
                             </pre>
                           );
                         }
@@ -368,7 +420,7 @@ export default function SyncHistoryPage() {
               </div>
             </div>
             <div className="px-6 py-4 border-t flex justify-end gap-2">
-              {selectedLogDetails.status === 'success' && (
+              {selectedLogDetails.status === 'success' && selectedLogDetails.file_available && (
                 <button
                   type="button"
                   onClick={() => handleDownloadFit(selectedLogDetails as SyncLog)}

@@ -44,8 +44,11 @@ export interface SyncLogDetails {
   error_message: string | null;
   activity_name: string | null;
   activity_type: string | null;
+  uploaded_file_extension: string | null;
+  uploaded_file_path: string | null;
+  file_available: boolean;
   strava_data: unknown | null;
-  gpx_data: string | null;
+  garmin_data: string | null;
   created_at: string;
   completed_at: string | null;
 }
