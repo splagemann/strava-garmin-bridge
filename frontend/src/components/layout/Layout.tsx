@@ -23,6 +23,7 @@ export default function Layout() {
     { path: '/', label: 'Dashboard' },
     { path: '/filters', label: 'Filters' },
     { path: '/history', label: 'History' },
+    { path: '/workouts', label: 'Workouts' },
     { path: '/settings', label: 'Settings' },
   ];
 

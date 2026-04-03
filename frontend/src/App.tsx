@@ -10,6 +10,7 @@ import FiltersPage from './pages/FiltersPage';
 import SyncHistoryPage from './pages/SyncHistoryPage';
 import SettingsPage from './pages/SettingsPage';
 import ProfilePage from './pages/ProfilePage';
+import WorkoutSchedulePage from './pages/WorkoutSchedulePage';
 import Layout from './components/layout/Layout';
 
 const queryClient = new QueryClient({
@@ -22,8 +23,9 @@ const queryClient = new QueryClient({
 });
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, hasAuthToken } = useAuth();
+  const { authStatus, isLoading, hasAuthToken } = useAuth();
 
+  // No JWT at all → must log in
   if (!hasAuthToken) {
     return <Navigate to="/auth" replace />;
   }
@@ -39,7 +41,8 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!isAuthenticated) {
+  // Strava not connected → need initial setup (Garmin issues don't kick users out)
+  if (authStatus && !authStatus.strava_connected) {
     return <Navigate to="/auth" replace />;
   }
 
@@ -65,6 +68,7 @@ function AppRoutes() {
         <Route path="history" element={<SyncHistoryPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="profile" element={<ProfilePage />} />
+        <Route path="workouts" element={<WorkoutSchedulePage />} />
       </Route>
     </Routes>
   );

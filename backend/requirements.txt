@@ -12,7 +12,9 @@ psycopg2-binary==2.9.11
 stravalib>=2.0.0
 
 # Garmin Integration
-garminconnect==0.2.38
+garminconnect==0.3.1
+curl_cffi>=0.6
+ua-generator>=1.0
 
 # Task Queue
 celery[redis]==5.3.4

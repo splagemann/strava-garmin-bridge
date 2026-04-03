@@ -2,6 +2,7 @@
 Celery application configuration.
 """
 
+from celery.schedules import crontab
 from datetime import timedelta
 
 from celery import Celery
@@ -29,6 +30,12 @@ _beat_schedule = {
     "poll-withings-weight-every-30-minutes": {
         "task": "app.tasks.sync_tasks.poll_withings_weight_task",
         "schedule": timedelta(minutes=30),
+    },
+    "apply-workout-schedules-daily": {
+        "task": "app.tasks.sync_tasks.apply_workout_schedules_task",
+        # Run at 06:00 UTC every day — early enough that workouts are on the calendar
+        # before most users start their day.
+        "schedule": crontab(hour=6, minute=0),
     },
 }
 if settings.GARMIN_TO_STRAVA_SYNC_ENABLED:

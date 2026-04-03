@@ -26,11 +26,18 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Clear token and redirect to auth
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('user_email');
-      localStorage.removeItem('athlete_id');
-      window.location.href = '/auth';
+      const url: string = error.config?.url ?? '';
+      // Garmin/Withings credential endpoints return 401 for bad third-party credentials,
+      // NOT because the app session is invalid. Don't log the user out for those.
+      const isThirdPartyCredentialEndpoint =
+        url.includes('/auth/garmin/') || url.includes('/auth/withings/');
+
+      if (!isThirdPartyCredentialEndpoint) {
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('user_email');
+        localStorage.removeItem('athlete_id');
+        window.location.href = '/auth';
+      }
     }
     return Promise.reject(error);
   }

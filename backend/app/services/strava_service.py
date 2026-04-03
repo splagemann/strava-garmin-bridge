@@ -88,16 +88,20 @@ class StravaService:
         Returns:
             Created or updated StravaAuth object
         """
-        # Check if auth already exists
-        strava_auth = self.db.query(StravaAuth).filter(StravaAuth.user_id == user.id).first()
-
-        # Extract athlete ID
+        # Extract athlete ID first so we can use it in the duplicate-safe lookup below.
         if athlete:
             athlete_id = str(athlete.id)
         else:
             # Fallback to token response if athlete not provided
             athlete_info = token_response.get("athlete", {})
             athlete_id = str(athlete_info.get("id", "unknown"))
+
+        # Check if auth already exists — search by user_id first, then fall back to
+        # athlete_id so reconnecting the same Strava account never causes a UniqueViolation.
+        strava_auth = (
+            self.db.query(StravaAuth).filter(StravaAuth.user_id == user.id).first()
+            or self.db.query(StravaAuth).filter(StravaAuth.athlete_id == athlete_id).first()
+        )
 
         expires_at = datetime.fromtimestamp(token_response["expires_at"])
 

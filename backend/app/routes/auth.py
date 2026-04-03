@@ -30,8 +30,9 @@ from app.utils.user_settings import (
     set_setting,
 )
 from app.middleware.auth import get_current_user
-from app.models import User
+from app.models import StravaAuth, User
 from app.services.garmin_service import GarminService
+from garminconnect import GarminConnectTooManyRequestsError
 from app.services.strava_service import StravaService
 from app.services.withings_service import WithingsService
 from app.utils.jwt import create_access_token, verify_state_token
@@ -178,12 +179,21 @@ async def exchange_strava_code(auth_request: StravaAuthRequest, db: Session = De
             athlete_email = f"athlete_{athlete_id}@strava.local"
             logger.info(f"No email provided by Strava, using placeholder: {athlete_email}")
 
-        user = db.query(User).filter(User.email == athlete_email).first()
-        if not user:
-            user = User(email=athlete_email)
-            db.add(user)
-            db.commit()
-            db.refresh(user)
+        # Look up by athlete_id first — this handles reconnects and prevents the
+        # UniqueViolation that occurs when athlete_id already exists for another user row.
+        existing_auth = (
+            db.query(StravaAuth).filter(StravaAuth.athlete_id == str(athlete_id)).first()
+        )
+        if existing_auth:
+            user = existing_auth.user
+            logger.info(f"Returning user {user.id} matched by athlete_id {athlete_id}")
+        else:
+            user = db.query(User).filter(User.email == athlete_email).first()
+            if not user:
+                user = User(email=athlete_email)
+                db.add(user)
+                db.commit()
+                db.refresh(user)
 
         # Save Strava auth with athlete info
         strava_auth = strava_service.save_auth(user, token_response, athlete)
@@ -225,10 +235,16 @@ async def save_garmin_credentials(
         result, data = garmin_service.start_login_with_mfa(
             user.id, credentials.email, credentials.password
         )
+    except GarminConnectTooManyRequestsError:
+        raise HTTPException(
+            status_code=429,
+            detail="Garmin is rate-limiting login attempts. Please wait a few minutes before trying again.",
+        )
     except Exception as e:
         detail = str(e) if str(e) else "Invalid Garmin credentials"
         logger.error(f"Garmin login failed for user {user.id}: {e}", exc_info=True)
-        raise HTTPException(status_code=401, detail=detail)
+        # Use 400, not 401 — a 401 would trigger the frontend's global logout interceptor
+        raise HTTPException(status_code=400, detail=detail)
 
     if result == "mfa_required":
         return {
@@ -237,12 +253,11 @@ async def save_garmin_credentials(
             "mfa_token": data,
         }
 
-    # Login succeeded without MFA; save credentials and session
+    # Login succeeded without MFA; save credentials and session (disk + DB)
     garmin_client = data
     try:
         garmin_auth = garmin_service.save_credentials(user, credentials.email, credentials.password)
-        garmin_auth.session_data = garmin_client.garth.dumps()
-        db.commit()
+        garmin_service._persist_tokens(garmin_client, garmin_auth)
     except Exception as e:
         logger.error(f"Error saving Garmin credentials: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to save credentials")

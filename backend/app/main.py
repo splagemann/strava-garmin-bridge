@@ -72,7 +72,7 @@ async def health_check():
 
 
 # Import and include routers
-from app.routes import activities, auth, filters, sync
+from app.routes import activities, auth, filters, sync, workouts
 
 app.include_router(auth.router, prefix=f"{settings.API_V1_PREFIX}/auth", tags=["Authentication"])
 app.include_router(filters.router, prefix=f"{settings.API_V1_PREFIX}/filters", tags=["Filters"])
@@ -80,7 +80,7 @@ app.include_router(sync.router, prefix=f"{settings.API_V1_PREFIX}/sync", tags=["
 app.include_router(
     activities.router, prefix=f"{settings.API_V1_PREFIX}/activities", tags=["Activities"]
 )
-
+app.include_router(workouts.router, prefix=f"{settings.API_V1_PREFIX}/workouts", tags=["Workouts"])
 
 if __name__ == "__main__":
     import uvicorn

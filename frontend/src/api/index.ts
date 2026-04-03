@@ -3,3 +3,4 @@ export * from './auth';
 export * from './filters';
 export * from './sync';
 export * from './activities';
+export { workoutsApi } from './workouts';

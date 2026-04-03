@@ -356,33 +356,38 @@ class SyncService:
                     self._update_sync_log(sync_log, "failed", result["message"])
                     return result
 
-                # 7. Upload to Garmin
-                logger.info(f"Uploading activity to Garmin Connect (format: {file_extension})")
-                upload_response = self.garmin_service.upload_activity(
-                    temp_file_path, f".{file_extension}"
-                )
+                # 7. Import to Garmin (import endpoint prevents Garmin re-exporting to Strava)
+                logger.info(f"Importing activity to Garmin Connect (format: {file_extension})")
+                upload_response = self.garmin_service.import_activity(temp_file_path)
 
                 if not upload_response:
-                    result["message"] = "Failed to upload activity to Garmin (no response)"
+                    result["message"] = "Failed to import activity to Garmin (no response)"
                     self._update_sync_log(sync_log, "failed", result["message"])
                     return result
                 if upload_response.get("error"):
-                    msg = upload_response.get("message") or "Failed to upload activity to Garmin"
+                    msg = upload_response.get("message") or "Failed to import activity to Garmin"
                     details = upload_response.get("details")
                     result["message"] = f"{msg}. {details}" if details else msg
                     self._update_sync_log(sync_log, "failed", result["message"])
                     return result
 
                 # 8. Success!
-                # Try different possible keys for activity ID
-                garmin_activity_id = (
-                    upload_response.get("activity_id")
-                    or upload_response.get("activityId")
-                    or upload_response.get("id")
-                    or upload_response.get("activityID")
-                )
+                # import_activity() returns DetailedImportResult; extract the internal activity ID
+                # from the first success entry when present, otherwise fall back to top-level keys.
+                garmin_activity_id = None
+                detailed = upload_response.get("detailedImportResult", {})
+                successes = detailed.get("successes", [])
+                if successes:
+                    garmin_activity_id = successes[0].get("internalId")
+                if not garmin_activity_id:
+                    garmin_activity_id = (
+                        upload_response.get("activity_id")
+                        or upload_response.get("activityId")
+                        or upload_response.get("id")
+                        or upload_response.get("activityID")
+                    )
 
-                logger.info(f"Upload response keys: {list(upload_response.keys())}")
+                logger.info(f"Import response keys: {list(upload_response.keys())}")
                 logger.info(f"Extracted activity ID: {garmin_activity_id}")
 
                 result["status"] = "success"

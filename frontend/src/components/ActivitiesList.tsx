@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Activity } from '../api/activities';
 import { activitiesApi } from '../api/activities';
 import { syncApi } from '../api/sync';
@@ -12,6 +13,7 @@ interface ActivitiesListProps {
 
 export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
   const { authStatus } = useAuth();
+  const navigate = useNavigate();
   const garminToStravaEnabled = authStatus?.garmin_to_strava_sync_disabled !== true;
   const displayTimezone = authStatus?.display_timezone ?? 'UTC';
   const hour12 = authStatus?.display_time_format !== '24h';
@@ -20,6 +22,7 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
   const [loading, setLoading] = useState(true);
   const [activeSource, setActiveSource] = useState<'all' | 'strava' | 'garmin'>('all');
   const [syncingActivityId, setSyncingActivityId] = useState<string | null>(null);
+  const [sourceErrors, setSourceErrors] = useState<{ strava?: string; garmin?: string }>({});
 
   useEffect(() => {
     loadActivities();
@@ -27,11 +30,26 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
 
   const loadActivities = async () => {
     setLoading(true);
+    setSourceErrors({});
     try {
+      const errors: { strava?: string; garmin?: string } = {};
+
       const [stravaActivities, garminActivities] = await Promise.all([
-        activitiesApi.getStravaActivities(limit).catch(() => []),
-        activitiesApi.getGarminActivities(limit).catch(() => []),
+        activitiesApi.getStravaActivities(limit).catch((err: any) => {
+          const detail = err?.response?.data?.detail || 'Failed to load Strava activities';
+          errors.strava = detail;
+          return [] as Activity[];
+        }),
+        activitiesApi.getGarminActivities(limit).catch((err: any) => {
+          const detail = err?.response?.data?.detail || 'Failed to load Garmin activities';
+          errors.garmin = detail;
+          return [] as Activity[];
+        }),
       ]);
+
+      if (Object.keys(errors).length > 0) {
+        setSourceErrors(errors);
+      }
 
       // Combine and sort by date (most recent first)
       const combined = [...stravaActivities, ...garminActivities].sort(
@@ -155,9 +173,35 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
         </div>
       </div>
 
+      {(sourceErrors.strava || sourceErrors.garmin) && (
+        <div className="px-4 sm:px-6 py-3 bg-amber-50 border-b border-amber-100 space-y-2">
+          {sourceErrors.strava && (
+            <p className="text-sm text-amber-700">
+              <span className="font-medium">Strava:</span> {sourceErrors.strava}
+            </p>
+          )}
+          {sourceErrors.garmin && (
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-sm text-amber-700">
+                <span className="font-medium">Garmin:</span> {sourceErrors.garmin}
+              </p>
+              <button
+                type="button"
+                onClick={() => navigate('/settings')}
+                className="text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 px-2.5 py-1 rounded cursor-pointer whitespace-nowrap"
+              >
+                Re-authenticate →
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {filteredActivities.length === 0 ? (
         <div className="p-8 text-center text-gray-500">
-          No activities found
+          {sourceErrors.strava && sourceErrors.garmin
+            ? 'Could not load activities from either source.'
+            : 'No activities found'}
         </div>
       ) : (
         <div className="divide-y">

@@ -30,7 +30,12 @@ class User(Base):
     withings_auth = relationship("WithingsAuth", back_populates="user", uselist=False)
     activity_filters = relationship("ActivityFilter", back_populates="user")
     sync_logs = relationship("SyncLog", back_populates="user")
-    user_settings = relationship("UserSettings", back_populates="user", cascade="all, delete-orphan")
+    user_settings = relationship(
+        "UserSettings", back_populates="user", cascade="all, delete-orphan"
+    )
+    workout_schedules = relationship(
+        "WorkoutSchedule", back_populates="user", cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<User(id={self.id}, email={self.email})>"

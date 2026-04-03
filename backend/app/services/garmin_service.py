@@ -2,22 +2,36 @@
 Garmin Connect service for authentication and activity upload.
 """
 
-import json
 import logging
+import os
 import threading
 import time
 import uuid
 from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
 
-from garminconnect import Garmin, GarminConnectAuthenticationError, GarminConnectConnectionError
-from garth.exc import GarthException
+from garminconnect import (
+    Garmin,
+    GarminConnectAuthenticationError,
+    GarminConnectConnectionError,
+    GarminConnectTooManyRequestsError,
+)
 from sqlalchemy.orm import Session
 
 from app.models import GarminAuth, User
 from app.utils.crypto import decrypt, encrypt
 
 logger = logging.getLogger(__name__)
+
+# Root directory for per-user DI OAuth token files.
+# Mount this path as a persistent Docker volume so tokens survive container restarts.
+_TOKEN_ROOT = os.environ.get("GARMIN_TOKEN_DIR", "/backend/data/garmin_tokens")
+
+# Per-user rate-limit backoff: after a 429/auth failure on a fresh login, suppress
+# further fresh-login attempts for this many seconds to avoid Cloudflare blocks.
+_FRESH_LOGIN_COOLDOWN_SECONDS = 600  # 10 minutes
+_fresh_login_failed_at: Dict[int, float] = {}  # user_id → epoch timestamp of last failure
+_fresh_login_lock = threading.Lock()
 
 # In-memory store for MFA pending state (Garmin client + client_state not serializable).
 # Key: mfa_token (str), Value: dict with garmin, client_state, email, password, user_id, created_at
@@ -30,14 +44,39 @@ class GarminService:
     """Service for interacting with Garmin Connect."""
 
     def __init__(self, db: Session):
-        """
-        Initialize Garmin service.
-
-        Args:
-            db: Database session
-        """
         self.db = db
         self.client: Optional[Garmin] = None
+
+    # ------------------------------------------------------------------
+    # Token persistence helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _token_dir(user_id: int) -> str:
+        """Return (and create) the per-user token directory on disk."""
+        path = os.path.join(_TOKEN_ROOT, f"user_{user_id}")
+        os.makedirs(path, exist_ok=True)
+        return path
+
+    def _persist_tokens(self, garmin_client: Garmin, garmin_auth: GarminAuth) -> None:
+        """Write DI OAuth tokens to disk AND keep the DB column in sync.
+        Also clears any active rate-limit cooldown — valid tokens mean we're unblocked.
+        """
+        with _fresh_login_lock:
+            _fresh_login_failed_at.pop(garmin_auth.user_id, None)
+
+        token_dir = self._token_dir(garmin_auth.user_id)
+        try:
+            garmin_client.client.dump(token_dir)
+        except Exception as exc:
+            logger.warning(f"Could not write token file for user {garmin_auth.user_id}: {exc}")
+
+        try:
+            session_json = garmin_client.client.dumps()
+            garmin_auth.session_data = session_json
+            self.db.commit()
+        except Exception as exc:
+            logger.warning(f"Could not save session to DB for user {garmin_auth.user_id}: {exc}")
 
     def save_credentials(self, user: User, email: str, password: str) -> GarminAuth:
         """
@@ -104,6 +143,9 @@ class GarminService:
         try:
             client = Garmin(email=email, password=password, return_on_mfa=True)
             login_result = client.login()
+        except GarminConnectTooManyRequestsError as e:
+            logger.error(f"Garmin login (MFA flow) rate-limited: {e}")
+            raise
         except GarminConnectAuthenticationError as e:
             logger.error(f"Garmin login (MFA flow) auth failed: {e}")
             raise
@@ -112,12 +154,10 @@ class GarminService:
             raise
 
         if login_result and login_result[0] == "needs_mfa":
-            client_state = login_result[1]
             mfa_token = str(uuid.uuid4())
             with _MFA_LOCK:
                 _MFA_PENDING[mfa_token] = {
                     "garmin": client,
-                    "client_state": client_state,
                     "email": email,
                     "password": password,
                     "user_id": user_id,
@@ -156,39 +196,23 @@ class GarminService:
             return False, "MFA session expired. Please submit your Garmin credentials again."
 
         garmin_client = pending["garmin"]
-        client_state = pending["client_state"]
         email = pending["email"]
         password = pending["password"]
 
         try:
-            garmin_client.resume_login(client_state, mfa_code)
+            # client_state is now unused internally (MFA state lives on the client object)
+            garmin_client.resume_login(None, mfa_code)
         except GarminConnectAuthenticationError as e:
             logger.warning(f"MFA completion failed for user {user.id}: {e}")
             return False, "Invalid MFA code. Please try again."
         except GarminConnectConnectionError as e:
             logger.warning(f"MFA completion connection error for user {user.id}: {e}")
-            return False, str(e)
-        except GarthException as e:
-            msg = str(e).strip() if str(e) else ""
-            logger.warning(f"MFA completion (Garth) for user {user.id}: {e}")
-            if "csrf" in msg.lower() or "session" in msg.lower() or "expired" in msg.lower():
-                return (
-                    False,
-                    "Session expired. Please re-enter your Garmin credentials and try the code again.",
-                )
-            if "mfa" in msg.lower() or "code" in msg.lower() or "invalid" in msg.lower():
-                return False, "Invalid MFA code. Please try again."
+            msg = str(e).strip()
             if msg and len(msg) < 120 and "traceback" not in msg.lower():
                 return False, f"MFA verification failed: {msg}"
             return (
                 False,
                 "MFA verification failed. Please re-enter your Garmin credentials and try the code again.",
-            )
-        except AssertionError as e:
-            logger.warning(f"MFA completion assertion for user {user.id}: {e}")
-            return (
-                False,
-                "Session expired or invalid. Please re-enter your Garmin credentials and try again.",
             )
         except Exception as e:
             logger.exception(f"MFA completion error for user {user.id}: {type(e).__name__}: {e}")
@@ -205,10 +229,8 @@ class GarminService:
             )
 
         try:
-            session_json = garmin_client.garth.dumps()
             garmin_auth = self.save_credentials(user, email, password)
-            garmin_auth.session_data = session_json
-            self.db.commit()
+            self._persist_tokens(garmin_client, garmin_auth)
             logger.info(f"Garmin credentials and session saved for user {user.id} after MFA")
             return True, None
         except Exception as e:
@@ -234,62 +256,120 @@ class GarminService:
         email = decrypt(garmin_auth.encrypted_email)
         password = decrypt(garmin_auth.encrypted_password)
 
-        try:
-            # Try to restore session from database
-            if garmin_auth.session_data:
-                try:
-                    logger.info(
-                        f"Attempting to restore Garmin session from database for user {user.id}"
-                    )
-                    # Initialize Garmin client
-                    self.client = Garmin()
+        token_dir = self._token_dir(user.id)
+        token_file = os.path.join(token_dir, "garmin_tokens.json")
 
-                    # Load saved tokens into garth
-                    self.client.garth.loads(garmin_auth.session_data)
-
-                    logger.info(f"Successfully restored Garmin session for user {user.id}")
-                    return True
-                except Exception as e:
-                    logger.warning(f"Failed to restore session, will re-login: {e}")
-
-            # Fresh login required
-            logger.info(f"Performing fresh Garmin login for user {user.id}")
-            self.client = Garmin(email=email, password=password)
-
-            # Login returns tuple: (status, mfa_data) or (OAuth1Token, OAuth2Token).
-            # When MFA is required, garth returns ("needs_mfa", state); garminconnect
-            # may then access profile before checking, raising AssertionError.
+        # Strip corrupt/empty session_data so it is never used to seed a bad token file.
+        if garmin_auth.session_data is not None and not garmin_auth.session_data.strip():
+            logger.warning(
+                f"Clearing empty/corrupt session_data for user {user.id}"
+            )
+            garmin_auth.session_data = None
             try:
-                login_result = self.client.login()
-            except AssertionError as e:
-                if "OAuth1 token is required for OAuth2 refresh" in str(e):
-                    logger.error(
-                        "Garmin login failed for user %s (MFA/OAuth1): %s",
-                        user.id,
-                        e,
+                self.db.commit()
+            except Exception:
+                pass
+
+        try:
+            # Seed disk from DB on first run / fresh volume mount.
+            if garmin_auth.session_data and not os.path.exists(token_file):
+                try:
+                    with open(token_file, "w") as f:
+                        f.write(garmin_auth.session_data)
+                    logger.info(f"Seeded token file from DB for user {user.id}")
+                except Exception as seed_err:
+                    logger.warning(f"Could not seed token file: {seed_err}")
+
+            # Restore from disk — login() handles load + expiry check + proactive refresh.
+            if os.path.exists(token_file):
+                try:
+                    self.client = Garmin()
+                    self.client.login(token_dir)
+                    self._persist_tokens(self.client, garmin_auth)
+                    logger.info(f"Restored Garmin session for user {user.id}")
+                    return True
+                except (GarminConnectTooManyRequestsError, GarminConnectConnectionError) as e:
+                    # Rate-limit or network error — keep the token file (tokens may still be
+                    # valid once the throttle lifts) and bail out until next cycle.
+                    logger.warning(
+                        f"Garmin rate-limit/connection error while restoring session for "
+                        f"user {user.id}: {e}. Will retry next cycle."
                     )
                     return False
-                raise
+                except GarminConnectAuthenticationError as e:
+                    # Token file contains an incompatible format (e.g. old garth tokens).
+                    # This is a local data problem, not Garmin blocking us — delete the
+                    # bad file, wipe the DB copy, clear any rate-limit cooldown, and fall
+                    # through to attempt a fresh login immediately.
+                    logger.warning(
+                        f"Token file for user {user.id} has an incompatible format "
+                        f"({e}). Clearing stale data and attempting fresh login."
+                    )
+                    try:
+                        os.unlink(token_file)
+                    except OSError:
+                        pass
+                    try:
+                        garmin_auth.session_data = None
+                        self.db.commit()
+                    except Exception:
+                        pass
+                    with _fresh_login_lock:
+                        _fresh_login_failed_at.pop(user.id, None)
+                except Exception as e:
+                    logger.warning(
+                        f"Stale token file for user {user.id}: {e}. Removing and will "
+                        "attempt fresh login after cooldown."
+                    )
+                    try:
+                        os.unlink(token_file)
+                    except OSError:
+                        pass
 
-            # Check if MFA is required
-            if login_result and login_result[0] == "needs_mfa":
-                error_msg = "MFA/2FA is required for this Garmin account. Please disable 2FA or use app-specific password."
-                logger.error(f"{error_msg} for user {user.id}")
+            # Guard: suppress fresh logins while in the rate-limit cooldown window.
+            with _fresh_login_lock:
+                last_fail = _fresh_login_failed_at.get(user.id)
+            if last_fail and (time.time() - last_fail) < _FRESH_LOGIN_COOLDOWN_SECONDS:
+                remaining = int(_FRESH_LOGIN_COOLDOWN_SECONDS - (time.time() - last_fail))
+                logger.warning(
+                    f"Skipping fresh Garmin login for user {user.id} — still in "
+                    f"rate-limit cooldown ({remaining}s remaining). "
+                    "Re-authenticate via the app to reset."
+                )
                 return False
 
-            # Save tokens to database as JSON
-            session_json = self.client.garth.dumps()
-            garmin_auth.session_data = session_json
-            self.db.commit()
+            # Fresh login — only reached when no valid token file exists.
+            # return_on_mfa=True prevents a hard exception when MFA is required;
+            # instead we get ("needs_mfa",) back and can bail gracefully.
+            logger.info(f"Performing fresh Garmin login for user {user.id}")
+            self.client = Garmin(email=email, password=password, return_on_mfa=True)
+            login_result = self.client.login(token_dir)
 
-            logger.info(f"Successfully logged in to Garmin for user {user.id}")
+            if login_result and login_result[0] == "needs_mfa":
+                logger.error(
+                    f"MFA required for user {user.id} during background connect. "
+                    "Re-authenticate via the app."
+                )
+                return False
+
+            with _fresh_login_lock:
+                _fresh_login_failed_at.pop(user.id, None)
+            self._persist_tokens(self.client, garmin_auth)
+            logger.info(f"Fresh Garmin login succeeded for user {user.id}")
             return True
 
+        except (GarminConnectTooManyRequestsError, GarminConnectConnectionError) as e:
+            logger.error(
+                f"Garmin rate-limited / connection error for user {user.id}: {e}. "
+                f"Entering {_FRESH_LOGIN_COOLDOWN_SECONDS // 60}-minute cooldown."
+            )
+            with _fresh_login_lock:
+                _fresh_login_failed_at[user.id] = time.time()
+            return False
         except GarminConnectAuthenticationError as e:
             logger.error(f"Garmin authentication failed for user {user.id}: {e}")
-            return False
-        except GarminConnectConnectionError as e:
-            logger.error(f"Garmin connection error for user {user.id}: {e}")
+            with _fresh_login_lock:
+                _fresh_login_failed_at[user.id] = time.time()
             return False
         except Exception as e:
             logger.error(f"Error connecting to Garmin for user {user.id}: {e}", exc_info=True)
@@ -341,6 +421,121 @@ class GarminService:
             return None
         except Exception as e:
             logger.error(f"Error uploading activity: {e}", exc_info=True)
+            return None
+
+    def import_activity(self, file_path: str) -> Optional[Dict[str, Any]]:
+        """
+        Import activity file to Garmin Connect using the import endpoint.
+
+        Unlike upload_activity(), this uses the import-style endpoint with
+        Garmin Connect Mobile headers so the activity is treated as an import
+        and will NOT be re-exported to Strava (preventing ping-pong duplicates).
+
+        Args:
+            file_path: Path to activity file (.fit, .tcx, or .gpx)
+
+        Returns:
+            DetailedImportResult dict (with successes/failures/internalId) or None if error
+        """
+        if not self.client:
+            logger.error("Garmin client not connected")
+            return None
+
+        try:
+            import os
+
+            if not os.path.exists(file_path):
+                logger.error(f"Activity file does not exist: {file_path}")
+                return None
+
+            logger.info(f"Importing activity from {file_path} (will not be re-exported to Strava)")
+            result = self.client.import_activity(file_path)
+
+            if isinstance(result, dict):
+                return result
+            return vars(result) if hasattr(result, "__dict__") else {"raw_response": result}
+
+        except Exception as e:
+            # 409 Conflict means Garmin already has this activity — treat as duplicate not an error
+            if "409" in str(e) or "duplicate" in str(e).lower():
+                logger.warning(f"Activity already exists in Garmin (duplicate): {e}")
+                return {"duplicate": True, "message": str(e)}
+            logger.error(f"Error importing activity: {e}", exc_info=True)
+            return None
+
+    def get_workouts(self, limit: int = 200) -> Optional[list]:
+        """
+        Fetch all saved workouts from Garmin Connect.
+
+        Returns:
+            List of workout dicts (workoutId, name, sport, etc.) or None on error.
+        """
+        if not self.client:
+            logger.error("Garmin client not connected")
+            return None
+
+        try:
+            logger.info("Fetching Garmin workouts")
+            workouts = self.client.get_workouts(0, limit)
+            return workouts if isinstance(workouts, list) else []
+        except Exception as e:
+            logger.error(f"Error fetching Garmin workouts: {e}", exc_info=True)
+            return None
+
+    def get_scheduled_dates_for_workout(self, workout_id: str) -> set:
+        """
+        Fetch all dates on which a specific workout is already scheduled in Garmin.
+
+        Calls GET /workout-service/schedule/{workout_id} — returns a list of objects
+        like {"date": "YYYY-MM-DD", ...}.  Returns a set of ISO date strings so callers
+        can do O(1) membership tests.
+
+        Returns an empty set on any error (fail-open: we'd rather over-schedule than skip).
+        """
+        if not self.client:
+            return set()
+
+        try:
+            # garminconnect exposes low-level API access via connectapi()
+            data = self.client.connectapi(
+                f"/workout-service/schedule/{workout_id}"
+            )
+            if isinstance(data, list):
+                dates = {entry.get("date") for entry in data if entry.get("date")}
+                logger.debug(
+                    f"Workout {workout_id} already scheduled on {len(dates)} date(s): {sorted(dates)}"
+                )
+                return dates
+        except Exception as e:
+            logger.warning(
+                f"Could not fetch scheduled dates for workout {workout_id}: {e}. "
+                "Proceeding without Garmin-side duplicate check."
+            )
+        return set()
+
+    def schedule_workout(self, workout_id: str, date: str) -> Optional[dict]:
+        """
+        Schedule a Garmin workout on a specific date.
+
+        Args:
+            workout_id: Garmin workout ID string.
+            date: ISO date string (YYYY-MM-DD).
+
+        Returns:
+            Response dict on success, or None on error.
+        """
+        if not self.client:
+            logger.error("Garmin client not connected")
+            return None
+
+        try:
+            logger.info(f"Scheduling workout {workout_id} for {date}")
+            result = self.client.schedule_workout(workout_id, date)
+            if isinstance(result, dict):
+                return result
+            return {"scheduled": True}
+        except Exception as e:
+            logger.error(f"Error scheduling workout {workout_id} for {date}: {e}", exc_info=True)
             return None
 
     def get_activities(self, start_date: str, limit: int = 10) -> Optional[list]:
@@ -493,32 +688,14 @@ class GarminService:
         Returns:
             Tuple of (success: bool, error_message: Optional[str])
         """
-        _OAUTH1_REFRESH_MSG = "OAuth1 token is required for OAuth2 refresh"
-
         try:
             logger.info(f"Attempting to verify Garmin credentials for {email}")
 
-            # Use garminconnect with the correct login pattern
             client = Garmin(email=email, password=password)
+            login_result = client.login()
 
-            # Login returns tuple: (status, mfa_data) or (OAuth1Token, OAuth2Token)
-            # When MFA is required, garth returns ("needs_mfa", state) and then
-            # garminconnect may access profile before checking, triggering AssertionError
-            try:
-                login_result = client.login()
-            except AssertionError as e:
-                if _OAUTH1_REFRESH_MSG in str(e):
-                    error_msg = (
-                        "MFA/2FA is required for this account. "
-                        "Please disable 2FA or use an app-specific password."
-                    )
-                    logger.warning(f"Garmin login failed (OAuth1/MFA): {e}")
-                    return False, error_msg
-                raise
-
-            # Check if MFA is required
             if login_result and login_result[0] == "needs_mfa":
-                error_msg = "MFA/2FA is required for this account. Please disable 2FA or use app-specific password."
+                error_msg = "MFA/2FA is required for this account. Please disable 2FA or use an app-specific password."
                 logger.warning(error_msg)
                 return False, error_msg
 
@@ -533,15 +710,10 @@ class GarminService:
             error_msg = f"Connection error: {str(e)}"
             logger.error(error_msg)
             return False, error_msg
-        except AssertionError as e:
-            if _OAUTH1_REFRESH_MSG in str(e):
-                error_msg = (
-                    "MFA/2FA is required for this account. "
-                    "Please disable 2FA or use an app-specific password."
-                )
-                logger.warning(f"Garmin verify credentials failed (OAuth1/MFA): {e}")
-                return False, error_msg
-            raise
+        except GarminConnectTooManyRequestsError as e:
+            error_msg = f"Rate limit exceeded: {str(e)}"
+            logger.error(error_msg)
+            return False, error_msg
         except Exception as e:
             error_msg = f"{type(e).__name__}: {str(e) if str(e) else 'No details available'}"
             logger.error(f"Error verifying credentials: {error_msg}", exc_info=True)

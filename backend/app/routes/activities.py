@@ -42,25 +42,25 @@ def _get_cache_file_path(user_id: int, limit: int) -> Path:
 
 def _load_cache(user_id: int, limit: int) -> Optional[Tuple[List[Dict], datetime]]:
     """Load cached activities from file if not expired.
-    
+
     Returns:
         Tuple of (list of activity dicts, cache timestamp) or None if expired/missing
     """
     cache_file = _get_cache_file_path(user_id, limit)
-    
+
     if not cache_file.exists():
         return None
-    
+
     try:
         # Check file modification time
         file_mtime = datetime.fromtimestamp(cache_file.stat().st_mtime)
         age = (datetime.utcnow() - file_mtime).total_seconds()
-        
+
         if age >= CACHE_TTL_SECONDS:
             # Cache expired, delete file
             cache_file.unlink()
             return None
-        
+
         # Load cached data
         with open(cache_file, "r") as f:
             data = json.load(f)
@@ -69,7 +69,7 @@ def _load_cache(user_id: int, limit: int) -> Optional[Tuple[List[Dict], datetime
             for activity in activities:
                 if "start_date" in activity and isinstance(activity["start_date"], str):
                     activity["start_date"] = datetime.fromisoformat(activity["start_date"])
-            
+
             return activities, file_mtime
     except Exception as e:
         logger.warning(f"Failed to load cache file {cache_file}: {e}")
@@ -84,7 +84,7 @@ def _load_cache(user_id: int, limit: int) -> Optional[Tuple[List[Dict], datetime
 def _save_cache(user_id: int, limit: int, activities: List):
     """Save activities to cache file."""
     cache_file = _get_cache_file_path(user_id, limit)
-    
+
     try:
         # Convert datetime objects to ISO strings for JSON serialization
         serializable_activities = []
@@ -93,12 +93,12 @@ def _save_cache(user_id: int, limit: int, activities: List):
             if "start_date" in activity_dict and isinstance(activity_dict["start_date"], datetime):
                 activity_dict["start_date"] = activity_dict["start_date"].isoformat()
             serializable_activities.append(activity_dict)
-        
+
         data = {
             "activities": serializable_activities,
             "cached_at": datetime.utcnow().isoformat(),
         }
-        
+
         with open(cache_file, "w") as f:
             json.dump(data, f, default=str)
     except Exception as e:
@@ -110,21 +110,21 @@ def _cleanup_expired_cache():
     cache_dir = _get_cache_directory()
     if not cache_dir.exists():
         return
-    
+
     now = datetime.utcnow()
     cleaned = 0
-    
+
     for cache_file in cache_dir.glob("strava_activities_*.json"):
         try:
             file_mtime = datetime.fromtimestamp(cache_file.stat().st_mtime)
             age = (now - file_mtime).total_seconds()
-            
+
             if age >= CACHE_TTL_SECONDS:
                 cache_file.unlink()
                 cleaned += 1
         except Exception as e:
             logger.debug(f"Error checking cache file {cache_file}: {e}")
-    
+
     if cleaned > 0:
         logger.debug(f"Cleaned up {cleaned} expired cache files")
 
@@ -134,17 +134,17 @@ def _invalidate_user_cache(user_id: int):
     cache_dir = _get_cache_directory()
     if not cache_dir.exists():
         return
-    
+
     pattern = f"strava_activities_u{user_id}_*.json"
     removed = 0
-    
+
     for cache_file in cache_dir.glob(pattern):
         try:
             cache_file.unlink()
             removed += 1
         except Exception as e:
             logger.warning(f"Failed to remove cache file {cache_file}: {e}")
-    
+
     if removed > 0:
         logger.info(f"Invalidated cache for user {user_id} ({removed} files)")
 
@@ -188,7 +188,10 @@ async def get_garmin_activities(
         # Initialize Garmin service and connect
         garmin_service = GarminService(db)
         if not garmin_service.connect(user):
-            raise HTTPException(status_code=500, detail="Failed to connect to Garmin")
+            logger.warning(
+                f"Could not connect to Garmin for user {user.id} — returning empty activity list"
+            )
+            return []
 
         # Get activities from the last 30 days
         from datetime import datetime, timedelta
@@ -319,15 +322,16 @@ async def get_strava_activities(
 
     # Cleanup expired cache entries periodically (every ~10th request)
     import random
+
     if random.random() < 0.1:  # 10% chance to cleanup
         _cleanup_expired_cache()
-    
+
     # Check cache first
     cached_result = _load_cache(user.id, limit)
     if cached_result:
         cached_activities_dicts, cache_timestamp = cached_result
         age = (datetime.utcnow() - cache_timestamp).total_seconds()
-        
+
         logger.info(
             f"Returning cached Strava activities for user {user.id} "
             f"(age: {age:.1f}s, limit: {limit})"
@@ -435,11 +439,11 @@ async def get_strava_activities(
             )
 
         logger.info(f"Returning {len(result)} Strava activities for user {user.id}")
-        
+
         # Cache the result to file
         _save_cache(user.id, limit, result)
         logger.debug(f"Cached Strava activities for user {user.id}, limit: {limit}")
-        
+
         return result
 
     except HTTPException:
