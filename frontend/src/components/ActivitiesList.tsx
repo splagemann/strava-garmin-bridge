@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Activity } from '../api/activities';
 import { activitiesApi } from '../api/activities';
 import { syncApi } from '../api/sync';
+import { useAuth } from '../hooks/useAuth';
+import { formatDateOnly, formatTime } from '../lib/utils';
 import { toast } from 'sonner';
 
 interface ActivitiesListProps {
@@ -9,10 +12,17 @@ interface ActivitiesListProps {
 }
 
 export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
+  const { authStatus } = useAuth();
+  const navigate = useNavigate();
+  const garminToStravaEnabled = authStatus?.garmin_to_strava_sync_disabled !== true;
+  const displayTimezone = authStatus?.display_timezone ?? 'UTC';
+  const hour12 = authStatus?.display_time_format !== '24h';
+
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeSource, setActiveSource] = useState<'all' | 'strava' | 'garmin'>('all');
   const [syncingActivityId, setSyncingActivityId] = useState<string | null>(null);
+  const [sourceErrors, setSourceErrors] = useState<{ strava?: string; garmin?: string }>({});
 
   useEffect(() => {
     loadActivities();
@@ -20,11 +30,26 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
 
   const loadActivities = async () => {
     setLoading(true);
+    setSourceErrors({});
     try {
+      const errors: { strava?: string; garmin?: string } = {};
+
       const [stravaActivities, garminActivities] = await Promise.all([
-        activitiesApi.getStravaActivities(limit).catch(() => []),
-        activitiesApi.getGarminActivities(limit).catch(() => []),
+        activitiesApi.getStravaActivities(limit).catch((err: any) => {
+          const detail = err?.response?.data?.detail || 'Failed to load Strava activities';
+          errors.strava = detail;
+          return [] as Activity[];
+        }),
+        activitiesApi.getGarminActivities(limit).catch((err: any) => {
+          const detail = err?.response?.data?.detail || 'Failed to load Garmin activities';
+          errors.garmin = detail;
+          return [] as Activity[];
+        }),
       ]);
+
+      if (Object.keys(errors).length > 0) {
+        setSourceErrors(errors);
+      }
 
       // Combine and sort by date (most recent first)
       const combined = [...stravaActivities, ...garminActivities].sort(
@@ -54,23 +79,6 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
       return `${hours}h ${minutes}m`;
     }
     return `${minutes}m`;
-  };
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  };
-
-  const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
   };
 
   const handleSync = async (activity: Activity) => {
@@ -129,8 +137,9 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
           <h2 className="text-lg font-semibold">Recent Activities</h2>
           <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0">
             <button
+              type="button"
               onClick={() => setActiveSource('all')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors ${
+              className={`px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors cursor-pointer ${
                 activeSource === 'all'
                   ? 'bg-primary text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -139,8 +148,9 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
               All
             </button>
             <button
+              type="button"
               onClick={() => setActiveSource('strava')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors ${
+              className={`px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors cursor-pointer ${
                 activeSource === 'strava'
                   ? 'bg-primary text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -149,8 +159,9 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
               Strava
             </button>
             <button
+              type="button"
               onClick={() => setActiveSource('garmin')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors ${
+              className={`px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors cursor-pointer ${
                 activeSource === 'garmin'
                   ? 'bg-primary text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -162,9 +173,35 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
         </div>
       </div>
 
+      {(sourceErrors.strava || sourceErrors.garmin) && (
+        <div className="px-4 sm:px-6 py-3 bg-amber-50 border-b border-amber-100 space-y-2">
+          {sourceErrors.strava && (
+            <p className="text-sm text-amber-700">
+              <span className="font-medium">Strava:</span> {sourceErrors.strava}
+            </p>
+          )}
+          {sourceErrors.garmin && (
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-sm text-amber-700">
+                <span className="font-medium">Garmin:</span> {sourceErrors.garmin}
+              </p>
+              <button
+                type="button"
+                onClick={() => navigate('/settings')}
+                className="text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 px-2.5 py-1 rounded cursor-pointer whitespace-nowrap"
+              >
+                Re-authenticate →
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {filteredActivities.length === 0 ? (
         <div className="p-8 text-center text-gray-500">
-          No activities found
+          {sourceErrors.strava && sourceErrors.garmin
+            ? 'Could not load activities from either source.'
+            : 'No activities found'}
         </div>
       ) : (
         <div className="divide-y">
@@ -205,7 +242,7 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
                           d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
                         />
                       </svg>
-                      {formatDate(activity.start_date)}
+                      {formatDateOnly(activity.start_date, displayTimezone)}
                     </span>
                     <span className="flex items-center gap-1">
                       <svg
@@ -221,7 +258,7 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
                           d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                         />
                       </svg>
-                      {formatTime(activity.start_date)}
+                      {formatTime(activity.start_date, displayTimezone, hour12)}
                     </span>
                   </div>
                 </div>
@@ -242,11 +279,11 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
                       </div>
                     )}
                   </div>
-                  {!activity.synced && (
+                  {!activity.synced && (activity.source === 'strava' || garminToStravaEnabled) && (
                     <button
                       onClick={() => handleSync(activity)}
                       disabled={syncingActivityId === activity.id}
-                      className="px-3 py-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-md disabled:opacity-50 whitespace-nowrap transition-colors"
+                      className="px-3 py-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-md disabled:opacity-50 whitespace-nowrap transition-colors cursor-pointer"
                       title={activity.source === 'strava' ? 'Sync to Garmin' : 'Sync to Strava'}
                     >
                       {syncingActivityId === activity.id ? (

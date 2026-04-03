@@ -49,7 +49,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,  # Specific origins only
     allow_credentials=True,  # Allow cookies/auth headers
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Explicit methods
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],  # Explicit methods
     allow_headers=["Content-Type", "Authorization"],  # Explicit headers
     max_age=600,  # Cache preflight requests for 10 minutes
 )
@@ -72,7 +72,7 @@ async def health_check():
 
 
 # Import and include routers
-from app.routes import activities, auth, filters, sync
+from app.routes import activities, auth, filters, sync, workouts
 
 app.include_router(auth.router, prefix=f"{settings.API_V1_PREFIX}/auth", tags=["Authentication"])
 app.include_router(filters.router, prefix=f"{settings.API_V1_PREFIX}/filters", tags=["Filters"])
@@ -80,7 +80,7 @@ app.include_router(sync.router, prefix=f"{settings.API_V1_PREFIX}/sync", tags=["
 app.include_router(
     activities.router, prefix=f"{settings.API_V1_PREFIX}/activities", tags=["Activities"]
 )
-
+app.include_router(workouts.router, prefix=f"{settings.API_V1_PREFIX}/workouts", tags=["Workouts"])
 
 if __name__ == "__main__":
     import uvicorn

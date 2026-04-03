@@ -13,9 +13,10 @@ from sqlalchemy.orm import Session
 from app.models import ActivityFilter, SyncLog, User
 from app.services.garmin_service import GarminService
 from app.services.strava_service import StravaService
+from app.utils.fit_utils import NO_GPS_MESSAGE, fit_file_has_gps
+from app.utils.user_settings import get_allow_export_without_gps
 
 logger = logging.getLogger(__name__)
-
 
 class GarminToStravaSyncService:
     """Service for syncing activities from Garmin to Strava."""
@@ -266,10 +267,36 @@ class GarminToStravaSyncService:
                 self._update_sync_log(sync_log, "failed", result["message"])
                 return result
 
-            # Store FIT file info
+            # Store FIT file info and save to disk for download feature
             fit_size = os.path.getsize(fit_file_path)
-            sync_log.gpx_data = f"FIT file downloaded: {fit_size} bytes"
+            sync_log.garmin_data = f"FIT file downloaded: {fit_size} bytes"
+            
+            # Read file bytes and save to disk
+            with open(fit_file_path, "rb") as f:
+                fit_bytes = f.read()
+            
+            try:
+                from app.utils.file_storage import save_uploaded_file
+                file_path = save_uploaded_file(fit_bytes, sync_log.id, "fit")
+                sync_log.uploaded_file_path = file_path
+                sync_log.uploaded_file_extension = "fit"
+            except Exception as e:
+                logger.warning(f"Failed to save file to disk: {e}", exc_info=True)
+                # Continue with sync even if file storage fails
+            
             self.db.commit()
+
+            # 4b. If FIT has no GPS, respect "Enable export without GPS" (same setting as Strava→Garmin)
+            if not fit_file_has_gps(fit_file_path):
+                if not get_allow_export_without_gps(self.user, self.db):
+                    result["status"] = "skipped"
+                    result["message"] = NO_GPS_MESSAGE
+                    self._update_sync_log(sync_log, "skipped", result["message"])
+                    logger.info(result["message"])
+                    return result
+                logger.info(
+                    f"FIT has no GPS for activity {garmin_activity_id}; uploading anyway (export without GPS enabled)"
+                )
 
             # 5. Upload to Strava
             logger.info(f"Uploading activity to Strava")
@@ -282,6 +309,13 @@ class GarminToStravaSyncService:
 
             if not upload_result or not upload_result.get("success"):
                 error_msg = upload_result.get("error") if upload_result else "Unknown error"
+                # Strava rejects no-GPS uploads; show friendly message
+                err_lower = error_msg.lower()
+                if "gps" in err_lower or "no gps" in err_lower or "gps data" in err_lower:
+                    result["status"] = "skipped"
+                    result["message"] = NO_GPS_MESSAGE
+                    self._update_sync_log(sync_log, "skipped", result["message"])
+                    return result
                 result["message"] = f"Failed to upload activity to Strava: {error_msg}"
                 self._update_sync_log(sync_log, "failed", result["message"])
                 return result

@@ -46,6 +46,7 @@ For production deployment using pre-built Docker images from GitHub Container Re
 
 1. **Clone the repository**
 ```bash
+git clone <repo-url>
 cd strava-garmin-bridge
 ```
 

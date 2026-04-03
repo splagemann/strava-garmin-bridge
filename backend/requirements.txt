@@ -4,15 +4,17 @@ uvicorn[standard]==0.24.0
 python-multipart==0.0.6
 
 # Database
-sqlalchemy==2.0.23
+sqlalchemy==2.0.46
 alembic==1.12.1
-psycopg2-binary==2.9.9
+psycopg2-binary==2.9.11
 
 # Strava Integration
 stravalib>=2.0.0
 
 # Garmin Integration
-garminconnect==0.2.34
+garminconnect==0.3.1
+curl_cffi>=0.6
+ua-generator>=1.0
 
 # Task Queue
 celery[redis]==5.3.4
@@ -27,7 +29,7 @@ cryptography==41.0.7
 # Activity File Handling
 fitparse==1.2.0
 gpxpy==1.6.2
-fit-tool==0.9.13
+fit-tool==0.9.14
 
 # HTTP Client
 httpx==0.25.2

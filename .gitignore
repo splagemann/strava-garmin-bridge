@@ -44,6 +44,7 @@ coverage.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
+coverage/
 
 # Environments
 .env
@@ -96,6 +97,10 @@ docker-compose.override.yml
 *.tmp
 tmp/
 temp/
+
+# Cache and uploads
+backend/data/cache/
+backend/data/uploads/
 
 # Pre-commit
 .pre-commit-config.yaml.bak

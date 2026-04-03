@@ -10,11 +10,21 @@ from celery import Task
 from app.celery_app import celery_app
 from app.database import SessionLocal
 from app.models import SyncLog, User
+from app.models.workout_schedule import WorkoutSchedule
 from app.services.garmin_service import GarminService
 from app.services.garmin_to_strava_sync_service import GarminToStravaSyncService
 from app.services.strava_service import StravaService
 from app.services.sync_service import SyncService
 from app.services.weight_sync_service import WeightSyncService
+from app.services.workout_schedule_service import WorkoutScheduleService
+from app.utils.user_settings import (
+    KEY_LAST_GARMIN_POLL_AT,
+    KEY_LAST_STRAVA_POLL_AT,
+    get_garmin_to_strava_sync_enabled,
+    get_last_poll_at,
+    get_sync_schedule_minutes,
+    set_last_poll_at,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -121,11 +131,21 @@ def poll_strava_activities_task(self, lookback_days: int = 7, max_activities_per
     lookback_start = datetime.now(timezone.utc) - timedelta(days=lookback_days)
 
     users = self.db.query(User).filter(User.is_active == True).all()
+    now = datetime.now(timezone.utc)
 
     for user in users:
         # Only process users with both Strava and Garmin connected
         if not user.strava_auth or not user.garmin_auth:
             continue
+
+        # Skip if user's sync schedule interval has not elapsed since last poll
+        interval_minutes = get_sync_schedule_minutes(self.db, user.id)
+        last_at = get_last_poll_at(self.db, user.id, KEY_LAST_STRAVA_POLL_AT)
+        if last_at is not None and (last_at + timedelta(minutes=interval_minutes)) > now:
+            continue
+
+        set_last_poll_at(self.db, user.id, KEY_LAST_STRAVA_POLL_AT, now)
+        self.db.commit()
 
         try:
             strava_service = StravaService(self.db)
@@ -194,11 +214,24 @@ def poll_garmin_activities_task(self, lookback_days: int = 7, max_activities_per
     lookback_start = datetime.now(timezone.utc) - timedelta(days=lookback_days)
 
     users = self.db.query(User).filter(User.is_active == True).all()
+    now = datetime.now(timezone.utc)
 
     for user in users:
         # Only process users with both Strava and Garmin connected
         if not user.strava_auth or not user.garmin_auth:
             continue
+
+        if not get_garmin_to_strava_sync_enabled(user, self.db):
+            continue
+
+        # Skip if user's sync schedule interval has not elapsed since last Garmin poll
+        interval_minutes = get_sync_schedule_minutes(self.db, user.id)
+        last_at = get_last_poll_at(self.db, user.id, KEY_LAST_GARMIN_POLL_AT)
+        if last_at is not None and (last_at + timedelta(minutes=interval_minutes)) > now:
+            continue
+
+        set_last_poll_at(self.db, user.id, KEY_LAST_GARMIN_POLL_AT, now)
+        self.db.commit()
 
         try:
             garmin_service = GarminService(self.db)
@@ -304,19 +337,65 @@ def poll_garmin_activities_task(self, lookback_days: int = 7, max_activities_per
 
 
 @celery_app.task(bind=True, base=DatabaseTask)
+def apply_workout_schedules_task(self):
+    """
+    Daily task: push each user's active workout schedules whose weekday matches today to Garmin.
+    Runs once per day so workouts appear on the calendar without manual intervention.
+    """
+    from datetime import date
+
+    today = date.today()
+    day_of_week = today.weekday()  # 0=Mon … 6=Sun
+    logger.info(f"Applying workout schedules for {today.isoformat()} (weekday {day_of_week})")
+
+    # Find users who have at least one active schedule for today's weekday
+    schedules_today = (
+        self.db.query(WorkoutSchedule)
+        .filter(WorkoutSchedule.is_active.is_(True))
+        .all()
+    )
+    user_ids = {
+        s.user_id for s in schedules_today if day_of_week in (s.days_of_week or [])
+    }
+
+    if not user_ids:
+        logger.info("No active workout schedules match today — nothing to push")
+        return
+
+    users = self.db.query(User).filter(User.id.in_(user_ids), User.is_active == True).all()
+
+    for user in users:
+        if not user.garmin_auth:
+            continue
+        try:
+            svc = WorkoutScheduleService(self.db, user)
+            results = svc.apply_for_date(today)
+            success = sum(1 for r in results if r.get("success"))
+            failed = len(results) - success
+            logger.info(
+                f"Workout schedule task for user {user.id} on {today}: "
+                f"{success} succeeded, {failed} failed"
+            )
+        except Exception as exc:
+            logger.error(
+                f"Workout schedule task failed for user {user.id}: {exc}", exc_info=True
+            )
+
+
+@celery_app.task(bind=True, base=DatabaseTask)
 def poll_withings_weight_task(self):
     """
     Periodically poll Withings for new weight measurements and sync to Garmin.
     """
     logger.info("Starting periodic Withings weight poll")
-    
+
     users = self.db.query(User).filter(User.is_active == True).all()
 
     for user in users:
         # Only process users with both Withings and Garmin connected
         if not user.withings_auth or not user.garmin_auth:
             continue
-            
+
         try:
             sync_service = WeightSyncService(self.db)
             sync_service.sync_weight(user)

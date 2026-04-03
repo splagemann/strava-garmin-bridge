@@ -7,7 +7,6 @@ from functools import lru_cache
 from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 
-
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
@@ -38,14 +37,18 @@ class Settings(BaseSettings):
     # API Configuration
     API_V1_PREFIX: str = "/api/v1"
 
-    model_config = ConfigDict(env_file=".env", case_sensitive=True)
+    # Sync direction: when False, only Strava → Garmin runs (no Garmin → Strava)
+    GARMIN_TO_STRAVA_SYNC_ENABLED: bool = False
 
+    # When False, skip activities without GPS in both directions (Strava→Garmin and Garmin→Strava). User can override in Settings.
+    ALLOW_EXPORT_WITHOUT_GPS: bool = False
+
+    model_config = ConfigDict(env_file=".env", case_sensitive=True)
 
 @lru_cache()
 def get_settings() -> Settings:
     """Get cached settings instance."""
     return Settings()
-
 
 # Create a global settings instance
 settings = get_settings()

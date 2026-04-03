@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -6,11 +6,25 @@ export default function Layout() {
   const location = useLocation();
   const { authStatus, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setProfileMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const navItems = [
     { path: '/', label: 'Dashboard' },
     { path: '/filters', label: 'Filters' },
     { path: '/history', label: 'History' },
+    { path: '/workouts', label: 'Workouts' },
+    { path: '/settings', label: 'Settings' },
   ];
 
   return (
@@ -43,15 +57,45 @@ export default function Layout() {
             </div>
             <div className="flex items-center">
               <div className="hidden sm:flex sm:items-center sm:space-x-4">
-                <div className="text-sm">
-                  <p className="text-gray-700 truncate max-w-[200px]">{authStatus?.email}</p>
+                <div className="relative" ref={profileMenuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setProfileMenuOpen(!profileMenuOpen)}
+                    className="flex items-center gap-1 text-sm text-gray-700 hover:text-gray-900 focus:outline-none cursor-pointer"
+                    aria-expanded={profileMenuOpen}
+                    aria-haspopup="true"
+                  >
+                    <span className="truncate max-w-[200px]">
+                      {authStatus?.username ||
+                        [authStatus?.first_name, authStatus?.last_name].filter(Boolean).join(' ') ||
+                        authStatus?.email}
+                    </span>
+                    <svg className="w-4 h-4 shrink-0 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {profileMenuOpen && (
+                    <div className="absolute right-0 z-10 mt-1 w-48 rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5">
+                      <Link
+                        to="/profile"
+                        onClick={() => setProfileMenuOpen(false)}
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      >
+                        Profile
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProfileMenuOpen(false);
+                          logout();
+                        }}
+                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer"
+                      >
+                        Logout
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <button
-                  onClick={logout}
-                  className="text-sm text-gray-500 hover:text-gray-700 whitespace-nowrap"
-                >
-                  Logout
-                </button>
               </div>
               <div className="sm:hidden flex items-center">
                 <button
@@ -96,16 +140,27 @@ export default function Layout() {
             <div className="pt-4 pb-3 border-t border-gray-200">
               <div className="flex items-center px-4 mb-3">
                 <div className="text-sm">
-                  <p className="text-gray-700 font-medium">{authStatus?.email}</p>
+                  <p className="text-gray-700 font-medium">
+                  {authStatus?.username ||
+                    [authStatus?.first_name, authStatus?.last_name].filter(Boolean).join(' ') ||
+                    authStatus?.email}
+                </p>
                 </div>
               </div>
-              <div className="px-4">
+              <div className="px-4 space-y-1">
+                <Link
+                  to="/profile"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block text-base font-medium text-gray-500 hover:text-gray-700"
+                >
+                  Profile
+                </Link>
                 <button
                   onClick={() => {
                     logout();
                     setMobileMenuOpen(false);
                   }}
-                  className="w-full text-left text-base font-medium text-gray-500 hover:text-gray-700"
+                  className="w-full text-left text-base font-medium text-gray-500 hover:text-gray-700 cursor-pointer"
                 >
                   Logout
                 </button>

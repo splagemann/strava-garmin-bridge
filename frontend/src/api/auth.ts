@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { AuthStatus, GarminCredentials, StravaAuthResponse, StravaAuthUrlResponse, WithingsAuthResponse, WithingsAuthUrlResponse } from '../types';
+import type { AuthStatus, GarminCredentials, GarminCredentialsResponse, ProfileUpdate, SettingsUpdate, StravaAuthResponse, StravaAuthUrlResponse, UserSettings, WithingsAuthResponse, WithingsAuthUrlResponse } from '../types/auth';
 
 export const authApi = {
   /**
@@ -159,10 +159,25 @@ export const authApi = {
   },
 
   /**
-   * Save Garmin credentials (requires authentication)
+   * Save Garmin credentials (requires authentication).
+   * If account has MFA, returns mfa_required and mfa_token; call submitGarminMfa with the code.
    */
   saveGarminCredentials: async (credentials: GarminCredentials) => {
-    const response = await apiClient.post('/api/v1/auth/garmin/credentials', credentials);
+    const response = await apiClient.post<GarminCredentialsResponse>(
+      '/api/v1/auth/garmin/credentials',
+      credentials
+    );
+    return response.data;
+  },
+
+  /**
+   * Complete Garmin login with MFA code (after credentials returned mfa_required).
+   */
+  submitGarminMfa: async (mfaToken: string, mfaCode: string) => {
+    const response = await apiClient.post('/api/v1/auth/garmin/mfa', {
+      mfa_token: mfaToken,
+      mfa_code: mfaCode,
+    });
     return response.data;
   },
 
@@ -171,6 +186,30 @@ export const authApi = {
    */
   getAuthStatus: async (): Promise<AuthStatus> => {
     const response = await apiClient.get<AuthStatus>('/api/v1/auth/status');
+    return response.data;
+  },
+
+  /**
+   * Get user settings (for Settings tab)
+   */
+  getSettings: async (): Promise<UserSettings> => {
+    const response = await apiClient.get<UserSettings>('/api/v1/auth/settings');
+    return response.data;
+  },
+
+  /**
+   * Update user settings
+   */
+  updateSettings: async (data: SettingsUpdate): Promise<UserSettings> => {
+    const response = await apiClient.patch<UserSettings>('/api/v1/auth/settings', data);
+    return response.data;
+  },
+
+  /**
+   * Update profile (email, display name, display_timezone)
+   */
+  updateProfile: async (data: ProfileUpdate): Promise<{ email: string; username: string | null; first_name: string | null; last_name: string | null; display_timezone: string; display_time_format: string }> => {
+    const response = await apiClient.patch<{ email: string; username: string | null; first_name: string | null; last_name: string | null; display_timezone: string; display_time_format: string }>('/api/v1/auth/profile', data);
     return response.data;
   },
 

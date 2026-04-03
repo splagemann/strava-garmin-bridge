@@ -43,7 +43,11 @@ class SyncLog(Base):
 
     # Debug data (for troubleshooting)
     strava_data = Column(JSON, nullable=True)  # Raw Strava activity object
-    gpx_data = Column(Text, nullable=True)  # GPX data sent to Garmin
+    garmin_data = Column(Text, nullable=True)  # File summary or Garmin response data
+
+    # Stored file data (for download feature)
+    uploaded_file_path = Column(String(255), nullable=True)  # Path to file on filesystem
+    uploaded_file_extension = Column(String(10), nullable=True)  # File extension: "fit", "gpx", "tcx", etc.
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, index=True)

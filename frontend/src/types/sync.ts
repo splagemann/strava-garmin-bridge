@@ -31,3 +31,31 @@ export interface ManualSyncResponse {
   message: string;
   garmin_activity_id?: string;
 }
+
+/** Sync log with debug data (details endpoint). */
+export interface SyncLogDetails {
+  id: number;
+  sync_direction: string;
+  source_activity_id: string;
+  target_activity_id: string | null;
+  strava_activity_id: string;
+  garmin_activity_id: string | null;
+  status: string;
+  error_message: string | null;
+  activity_name: string | null;
+  activity_type: string | null;
+  uploaded_file_extension: string | null;
+  uploaded_file_path: string | null;
+  file_available: boolean;
+  strava_data: unknown | null;
+  garmin_data: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+/** Filters for bulk delete sync logs. */
+export interface BulkDeleteSyncLogsParams {
+  status?: 'success' | 'failed' | 'skipped' | 'pending';
+  before_date?: string;
+  strava_activity_id?: string;
+}

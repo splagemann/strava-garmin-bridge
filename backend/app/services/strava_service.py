@@ -88,16 +88,20 @@ class StravaService:
         Returns:
             Created or updated StravaAuth object
         """
-        # Check if auth already exists
-        strava_auth = self.db.query(StravaAuth).filter(StravaAuth.user_id == user.id).first()
-
-        # Extract athlete ID
+        # Extract athlete ID first so we can use it in the duplicate-safe lookup below.
         if athlete:
             athlete_id = str(athlete.id)
         else:
             # Fallback to token response if athlete not provided
             athlete_info = token_response.get("athlete", {})
             athlete_id = str(athlete_info.get("id", "unknown"))
+
+        # Check if auth already exists — search by user_id first, then fall back to
+        # athlete_id so reconnecting the same Strava account never causes a UniqueViolation.
+        strava_auth = (
+            self.db.query(StravaAuth).filter(StravaAuth.user_id == user.id).first()
+            or self.db.query(StravaAuth).filter(StravaAuth.athlete_id == athlete_id).first()
+        )
 
         expires_at = datetime.fromtimestamp(token_response["expires_at"])
 
@@ -143,6 +147,12 @@ class StravaService:
 
         client = Client()
         client.access_token = strava_auth.access_token
+        client.refresh_token = strava_auth.refresh_token
+        # Set client_id and client_secret so stravalib can auto-refresh if needed
+        client.client_id = settings.STRAVA_CLIENT_ID
+        client.client_secret = settings.STRAVA_CLIENT_SECRET
+        # Set token_expires timestamp (Unix timestamp) to enable auto-refresh
+        client.token_expires = int(strava_auth.expires_at.timestamp())
         return client
 
     def _refresh_token(self, strava_auth: StravaAuth) -> StravaAuth:
@@ -211,7 +221,16 @@ class StravaService:
             return None
 
         try:
-            types = ["time", "latlng", "altitude", "heartrate", "cadence", "watts", "temp"]
+            types = [
+                "time",
+                "latlng",
+                "altitude",
+                "heartrate",
+                "cadence",
+                "watts",
+                "temp",
+                "velocity_smooth",
+            ]
             streams = client.get_activity_streams(activity_id, types=types)
             return streams
         except Exception as e:

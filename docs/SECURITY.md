@@ -86,7 +86,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 - **Removed from API responses**:
   - `session_data` (Garmin session tokens)
-  - `gpx_data` (raw location data)
+  - `garmin_data` (file summary or Garmin response data)
   - `strava_data` (may contain tokens)
   - Internal `user_id` (use JWT sub claim instead)
 

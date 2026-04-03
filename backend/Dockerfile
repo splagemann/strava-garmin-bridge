@@ -24,8 +24,10 @@ COPY . .
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
-# Create non-root user
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /backend
+# Create non-root user and persistent token directory
+RUN useradd -m -u 1000 appuser \
+    && mkdir -p /backend/data/garmin_tokens \
+    && chown -R appuser:appuser /backend
 USER appuser
 
 # Expose port

@@ -3,16 +3,22 @@ Sync management routes.
 """
 
 import logging
+import os
+import tempfile
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.utils.file_storage import get_file_path
+from app.utils.user_settings import get_garmin_to_strava_sync_enabled
 from app.middleware.auth import get_current_user
 from app.models import SyncLog, User
+from app.services.garmin_service import GarminService
 from app.services.garmin_to_strava_sync_service import GarminToStravaSyncService
 from app.services.sync_service import SyncService
 
@@ -68,6 +74,11 @@ class SyncLogDetailResponse(BaseModel):
     error_message: Optional[str]
     activity_name: Optional[str]
     activity_type: Optional[str]
+    uploaded_file_extension: Optional[str]  # File type sent: "fit", "gpx", "tcx", etc.
+    uploaded_file_path: Optional[str]  # Path to stored file
+    file_available: bool  # Whether the file exists on disk and can be downloaded
+    strava_data: Optional[Dict]  # Raw Strava activity data
+    garmin_data: Optional[str]  # File summary or Garmin response data
     created_at: datetime
     completed_at: Optional[datetime]
 
@@ -127,6 +138,12 @@ async def manual_sync_garmin_to_strava(
 
     Requires: Bearer token authentication
     """
+    if not get_garmin_to_strava_sync_enabled(current_user, db):
+        raise HTTPException(
+            status_code=403,
+            detail="Garmin → Strava sync is disabled. Enable it in Settings to sync from Garmin to Strava.",
+        )
+
     user = current_user
 
     # Check if user has both Strava and Garmin configured
@@ -233,7 +250,122 @@ async def get_sync_log_details(
     if not sync_log:
         raise HTTPException(status_code=404, detail="Sync log not found")
 
-    return sync_log
+    # Check if file exists on disk
+    file_available = False
+    if sync_log.uploaded_file_path and sync_log.uploaded_file_extension:
+        from app.utils.file_storage import get_file_path
+        try:
+            file_path = get_file_path(sync_log.uploaded_file_path)
+            file_available = file_path.exists()
+        except Exception as e:
+            logger.warning(f"Error checking file existence for sync_log {sync_log_id}: {e}")
+            file_available = False
+
+    # Create response using model_validate with additional field
+    response_data = {
+        "id": sync_log.id,
+        "sync_direction": sync_log.sync_direction,
+        "source_activity_id": sync_log.source_activity_id,
+        "target_activity_id": sync_log.target_activity_id,
+        "strava_activity_id": sync_log.strava_activity_id,
+        "garmin_activity_id": sync_log.garmin_activity_id,
+        "status": sync_log.status,
+        "error_message": sync_log.error_message,
+        "activity_name": sync_log.activity_name,
+        "activity_type": sync_log.activity_type,
+        "uploaded_file_extension": sync_log.uploaded_file_extension,
+        "uploaded_file_path": sync_log.uploaded_file_path,
+        "file_available": file_available,
+        "strava_data": sync_log.strava_data,
+        "garmin_data": sync_log.garmin_data,
+        "created_at": sync_log.created_at,
+        "completed_at": sync_log.completed_at,
+    }
+
+    return SyncLogDetailResponse(**response_data)
+
+
+@router.get("/history/{sync_log_id}/download-fit")
+async def download_sync_log_fit(
+    sync_log_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """
+    Download the file that was sent during sync. Returns the stored file when available,
+    otherwise regenerates (Strava→Garmin) or re-downloads (Garmin→Strava).
+    """
+    sync_log = (
+        db.query(SyncLog)
+        .filter(SyncLog.id == sync_log_id, SyncLog.user_id == current_user.id)
+        .first()
+    )
+    if not sync_log:
+        raise HTTPException(status_code=404, detail="Sync log not found")
+    if sync_log.status != "success":
+        raise HTTPException(status_code=400, detail="Only successful syncs can be downloaded")
+
+    activity_id = sync_log.source_activity_id
+
+    # Serve stored file when available
+    if sync_log.uploaded_file_path and sync_log.uploaded_file_extension:
+        path = get_file_path(sync_log.uploaded_file_path)
+        if path.exists():
+            ext = sync_log.uploaded_file_extension.strip().lower()
+            media_type = {
+                "fit": "application/octet-stream",
+                "gpx": "application/gpx+xml",
+                "tcx": "application/vnd.garmin.tcx+xml",
+            }.get(ext, "application/octet-stream")
+            with open(path, "rb") as f:
+                file_bytes = f.read()
+            return Response(
+                content=file_bytes,
+                media_type=media_type,
+                headers={"Content-Disposition": f'attachment; filename="activity-{activity_id}.{ext}"'},
+            )
+        logger.warning(f"Stored file missing: {sync_log.uploaded_file_path}")
+
+    # Fallback for old sync logs without stored file
+    filename = f"activity-{activity_id}.fit"
+
+    if sync_log.sync_direction == "strava_to_garmin":
+        sync_service = SyncService(db, current_user)
+        fit_bytes = sync_service.get_fit_bytes_for_strava_activity(int(activity_id))
+        if not fit_bytes:
+            raise HTTPException(
+                status_code=502,
+                detail="Could not generate FIT file (activity or streams unavailable)",
+            )
+        return Response(
+            content=fit_bytes,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    if sync_log.sync_direction == "garmin_to_strava":
+        garmin_service = GarminService(db)
+        if not garmin_service.connect(current_user):
+            raise HTTPException(status_code=502, detail="Garmin not connected")
+        fd, temp_path = tempfile.mkstemp(suffix=".fit")
+        try:
+            os.close(fd)
+            path = garmin_service.download_activity_original(activity_id, temp_path)
+            if not path or not os.path.exists(path):
+                raise HTTPException(status_code=502, detail="Could not download FIT from Garmin")
+            with open(path, "rb") as f:
+                fit_bytes = f.read()
+            return Response(
+                content=fit_bytes,
+                media_type="application/octet-stream",
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
+        finally:
+            if os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
+
+    raise HTTPException(status_code=400, detail="Download not supported for this sync direction")
 
 
 @router.post("/history/{sync_log_id}/retry")
@@ -335,6 +467,15 @@ async def delete_sync_log(
         if not sync_log:
             raise HTTPException(status_code=404, detail="Sync log not found")
 
+        # Delete associated file if it exists
+        if sync_log.uploaded_file_path:
+            from app.utils.file_storage import delete_uploaded_file
+            try:
+                delete_uploaded_file(sync_log.uploaded_file_path)
+                logger.info(f"Deleted file for sync_log {sync_log_id}: {sync_log.uploaded_file_path}")
+            except Exception as e:
+                logger.warning(f"Failed to delete file for sync_log {sync_log_id}: {e}")
+
         # Delete the sync log
         db.delete(sync_log)
         db.commit()
@@ -401,9 +542,26 @@ async def bulk_delete_sync_logs(
         if count == 0:
             return {"message": "No sync logs found matching the criteria", "deleted_count": 0}
 
+        # Get sync logs to delete their associated files
+        sync_logs_to_delete = query.all()
+        from app.utils.file_storage import delete_uploaded_file
+        
+        # Delete associated files
+        files_deleted = 0
+        for sync_log in sync_logs_to_delete:
+            if sync_log.uploaded_file_path:
+                try:
+                    delete_uploaded_file(sync_log.uploaded_file_path)
+                    files_deleted += 1
+                except Exception as e:
+                    logger.warning(f"Failed to delete file for sync_log {sync_log.id}: {e}")
+
         # Delete matching logs
         query.delete(synchronize_session=False)
         db.commit()
+        
+        if files_deleted > 0:
+            logger.info(f"Deleted {files_deleted} associated file(s) during bulk delete")
 
         logger.info(
             f"Bulk deleted {count} sync logs for user {current_user.id} (status={status}, before_date={before_date}, strava_activity_id={strava_activity_id})"

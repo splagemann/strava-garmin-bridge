@@ -207,8 +207,11 @@ decrypted = decrypt_password(encrypted)
 
 ## Important Constraints
 
+### Garmin library
+The `garminconnect` package is from PyPI (`garminconnect==0.2.38`). See [python-garminconnect](https://github.com/cyberjunky/python-garminconnect).
+
 ### File Naming Conflicts
-**Never** create a file named `garminconnect.py` in the project root - it conflicts with the installed `garminconnect` package and causes import errors. The actual library source is in `../garminconnect.py` for reference only.
+**Never** create a file named `garminconnect.py` in the project root - it conflicts with the installed `garminconnect` package and causes import errors.
 
 ### OAuth State Management
 The OAuth flow uses JWT-signed state tokens for CSRF protection. The frontend stores these in both sessionStorage (primary) and localStorage (fallback) to handle browser redirect issues. Backend validates state tokens with direct comparison fallback for resilience.
