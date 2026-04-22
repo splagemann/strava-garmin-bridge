@@ -15,8 +15,8 @@ Modern React-based frontend for the Strava-Garmin Bridge application. Built with
 ## Features
 
 ### Authentication
-- Strava OAuth integration
-- Garmin credentials management
+- Strava OAuth login
+- Optional Garmin credentials management
 - Automatic session handling
 
 ### Dashboard
@@ -91,13 +91,13 @@ VITE_API_URL=http://localhost:8000
 
 1. Visit `/auth` page
 2. Click "Connect with Strava" → redirects to Strava OAuth
-3. After redirect back, enter Garmin credentials
-4. Both services connected → redirects to Dashboard
+3. After redirect back, use the Dashboard
+4. Add Garmin credentials from the Dashboard when you want to enable Garmin sync features
 
 ### Daily Usage
 
 1. **Dashboard** - View sync stats and recent activity
-2. **Manual Sync** - Enter Strava activity ID to sync immediately
+2. **Manual Sync** - Enter an activity ID to sync immediately after Garmin is connected
 3. **Filters** - Create rules to include/exclude activities
 4. **History** - Review all syncs, retry failed ones
 

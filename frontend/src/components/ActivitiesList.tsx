@@ -1,30 +1,29 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { Activity } from '../api/activities';
 import { activitiesApi } from '../api/activities';
 import { syncApi } from '../api/sync';
 import { toast } from 'sonner';
+import { useAuth } from '../hooks/useAuth';
 
 interface ActivitiesListProps {
   limit?: number;
 }
 
 export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
+  const { authStatus } = useAuth();
+  const garminConnected = !!authStatus?.garmin_connected;
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeSource, setActiveSource] = useState<'all' | 'strava' | 'garmin'>('all');
   const [syncingActivityId, setSyncingActivityId] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadActivities();
-  }, [limit]);
-
-  const loadActivities = async () => {
+  const loadActivities = useCallback(async () => {
     setLoading(true);
     try {
-      const [stravaActivities, garminActivities] = await Promise.all([
-        activitiesApi.getStravaActivities(limit).catch(() => []),
-        activitiesApi.getGarminActivities(limit).catch(() => []),
-      ]);
+      const stravaActivities = await activitiesApi.getStravaActivities(limit).catch(() => []);
+      const garminActivities = garminConnected
+        ? await activitiesApi.getGarminActivities(limit).catch(() => [])
+        : [];
 
       // Combine and sort by date (most recent first)
       const combined = [...stravaActivities, ...garminActivities].sort(
@@ -38,7 +37,17 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [limit, garminConnected]);
+
+  useEffect(() => {
+    loadActivities();
+  }, [loadActivities]);
+
+  useEffect(() => {
+    if (!garminConnected && activeSource === 'garmin') {
+      setActiveSource('all');
+    }
+  }, [activeSource, garminConnected]);
 
   const formatDistance = (meters?: number) => {
     if (!meters) return 'N/A';
@@ -74,6 +83,11 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
   };
 
   const handleSync = async (activity: Activity) => {
+    if (!garminConnected) {
+      toast.error('Connect Garmin before syncing activities.');
+      return;
+    }
+
     setSyncingActivityId(activity.id);
     try {
       if (activity.source === 'strava') {
@@ -148,16 +162,18 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
             >
               Strava
             </button>
-            <button
-              onClick={() => setActiveSource('garmin')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors ${
-                activeSource === 'garmin'
-                  ? 'bg-primary text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Garmin
-            </button>
+            {garminConnected && (
+              <button
+                onClick={() => setActiveSource('garmin')}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors ${
+                  activeSource === 'garmin'
+                    ? 'bg-primary text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Garmin
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -242,7 +258,7 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
                       </div>
                     )}
                   </div>
-                  {!activity.synced && (
+                  {!activity.synced && garminConnected && (
                     <button
                       onClick={() => handleSync(activity)}
                       disabled={syncingActivityId === activity.id}
@@ -266,6 +282,11 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
                         </span>
                       )}
                     </button>
+                  )}
+                  {!activity.synced && !garminConnected && activity.source === 'strava' && (
+                    <div className="text-sm text-amber-700 whitespace-nowrap">
+                      Connect Garmin to sync
+                    </div>
                   )}
                   {activity.synced && (
                     <div className="flex items-center gap-1 text-green-600 text-sm whitespace-nowrap">

@@ -11,6 +11,7 @@ vi.mock('../api', () => ({
   authApi: {
     getAuthStatus: vi.fn(),
     saveGarminCredentials: vi.fn(),
+    verifyGarminMfa: vi.fn(),
     connectStrava: vi.fn(),
     connectWithings: vi.fn(),
     logout: vi.fn(),
@@ -42,7 +43,7 @@ describe('useAuth', () => {
     const mockStatus = {
       email: 'test@example.com',
       strava_connected: true,
-      garmin_connected: true,
+      garmin_connected: false,
     };
     (authApi.getAuthStatus as any).mockResolvedValue(mockStatus);
 
@@ -53,6 +54,21 @@ describe('useAuth', () => {
     });
     
     expect(result.current.isAuthenticated).toBe(true);
+  });
+
+  it('does not require Garmin connection for app authentication', async () => {
+    (clientApi.isAuthenticated as any).mockReturnValue(true);
+    (authApi.getAuthStatus as any).mockResolvedValue({
+      email: 'test@example.com',
+      strava_connected: true,
+      garmin_connected: false,
+    });
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.isAuthenticated).toBe(true);
+    });
   });
 
   it('does not fetch auth status when not authenticated', () => {
