@@ -6,20 +6,37 @@ import type {
   GarminMfaRequest,
   StravaAuthResponse,
   StravaAuthUrlResponse,
+  WithingsAuthResponse,
   WithingsAuthUrlResponse,
 } from '../types';
 
+const storeAuthResponse = (authResponse: StravaAuthResponse) => {
+  localStorage.setItem('auth_token', authResponse.access_token);
+  localStorage.setItem('user_email', authResponse.email);
+  localStorage.setItem('athlete_id', authResponse.athlete_id);
+};
+
 export const authApi = {
-  connectStrava: async () => {
+  getStravaAuthUrl: async (): Promise<StravaAuthUrlResponse> => {
     const response = await apiClient.get<StravaAuthUrlResponse>('/api/v1/auth/strava/auth-url');
-    const { auth_url, state } = response.data;
+    return response.data;
+  },
+
+  connectStrava: async () => {
+    const response = await authApi.getStravaAuthUrl();
+    const { auth_url, state } = response;
     sessionStorage.setItem('oauth_signed_state', state);
     window.location.href = auth_url;
   },
 
-  connectWithings: async () => {
+  getWithingsAuthUrl: async (): Promise<WithingsAuthUrlResponse> => {
     const response = await apiClient.get<WithingsAuthUrlResponse>('/api/v1/auth/withings/auth-url');
-    const { auth_url, state } = response.data;
+    return response.data;
+  },
+
+  connectWithings: async () => {
+    const response = await authApi.getWithingsAuthUrl();
+    const { auth_url, state } = response;
     sessionStorage.setItem('oauth_signed_state', state);
     window.location.href = auth_url;
   },
@@ -29,35 +46,33 @@ export const authApi = {
       code,
       state,
       signed_state: signedState,
+      scope: undefined,
     });
 
     const authResponse = response.data;
-    localStorage.setItem('auth_token', authResponse.access_token);
-    localStorage.setItem('user_email', authResponse.email);
-    localStorage.setItem('athlete_id', authResponse.athlete_id);
+    storeAuthResponse(authResponse);
     return authResponse;
   },
 
   handleOAuthCallback: async (code: string, state: string): Promise<StravaAuthResponse> => {
-    const signedState = sessionStorage.getItem('oauth_signed_state');
-    if (!signedState) {
-      throw new Error('Missing OAuth state. Please restart the Strava connection flow.');
-    }
-    return authApi.exchangeStravaCode(code, state, signedState);
+    const signedState = sessionStorage.getItem('oauth_signed_state') || state;
+    const authResponse = await authApi.exchangeStravaCode(code, state, signedState);
+    storeAuthResponse(authResponse);
+    return authResponse;
   },
 
-  handleWithingsCallback: async (code: string, state: string) => {
-    const signedState = sessionStorage.getItem('oauth_signed_state');
-    if (!signedState) {
-      throw new Error('Missing OAuth state. Please restart the Withings connection flow.');
-    }
-
-    const response = await apiClient.post('/api/v1/auth/withings/exchange', {
+  exchangeWithingsCode: async (code: string, state: string, signedState: string): Promise<WithingsAuthResponse> => {
+    const response = await apiClient.post<WithingsAuthResponse>('/api/v1/auth/withings/exchange', {
       code,
       state,
       signed_state: signedState,
     });
     return response.data;
+  },
+
+  handleWithingsCallback: async (code: string, state: string): Promise<WithingsAuthResponse> => {
+    const signedState = sessionStorage.getItem('oauth_signed_state') || state;
+    return authApi.exchangeWithingsCode(code, state, signedState);
   },
 
   saveGarminCredentials: async (credentials: GarminCredentials): Promise<GarminConnectResponse> => {
