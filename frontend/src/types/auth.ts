@@ -8,6 +8,7 @@ export interface AuthStatus {
   email: string;
   strava_connected: boolean;
   garmin_connected: boolean;
+  garmin_requires_mfa?: boolean;
   withings_connected?: boolean;
   strava_athlete_id: string | null;
 }
@@ -30,10 +31,19 @@ export interface WithingsAuthResponse {
 
 export interface StravaAuthUrlResponse {
   auth_url: string;
-  state: string;  // Signed state token for CSRF protection
+  state: string;
 }
 
 export interface GarminCredentials {
   email: string;
   password: string;
+}
+
+export interface GarminConnectResponse {
+  message: string;
+  requires_mfa: boolean;
+}
+
+export interface GarminMfaRequest {
+  code: string;
 }

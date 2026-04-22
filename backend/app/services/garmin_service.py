@@ -2,11 +2,13 @@
 Garmin Connect service for authentication and activity upload.
 """
 
+import base64
 import json
 import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+import requests
 from garminconnect import Garmin, GarminConnectAuthenticationError, GarminConnectConnectionError
 from sqlalchemy.orm import Session
 
@@ -16,8 +18,18 @@ from app.utils.crypto import decrypt, encrypt
 logger = logging.getLogger(__name__)
 
 
+class _StoredResponse:
+    """Minimal response object needed by garminconnect's widget MFA completion."""
+
+    def __init__(self, text: str, url: str):
+        self.text = text
+        self.url = url
+
+
 class GarminService:
     """Service for interacting with Garmin Connect."""
+
+    PENDING_MFA_PREFIX = "pending_mfa:"
 
     def __init__(self, db: Session):
         """
@@ -28,6 +40,78 @@ class GarminService:
         """
         self.db = db
         self.client: Optional[Garmin] = None
+
+    def _encode_pending_mfa_state(self, garmin_client: Garmin) -> str:
+        """Serialize pending MFA client state for temporary storage."""
+        mfa_session = garmin_client.client._mfa_session
+        state = {
+            "cookies": mfa_session.cookies.get_dict(),
+            "session_module": mfa_session.__class__.__module__,
+            "session_class": mfa_session.__class__.__name__,
+            "flow": getattr(garmin_client.client, "_mfa_flow", None),
+            "method": getattr(garmin_client.client, "_mfa_method", None),
+            "login_params": getattr(garmin_client.client, "_mfa_login_params", None),
+            "post_headers": getattr(garmin_client.client, "_mfa_post_headers", None),
+            "service_url": getattr(garmin_client.client, "_mfa_service_url", None),
+            "portal_service_url": getattr(garmin_client.client, "_portal_service_url", None),
+            "sso": getattr(garmin_client.client, "_sso", None),
+            "widget_last_resp_text": getattr(
+                getattr(garmin_client.client, "_widget_last_resp", None), "text", None
+            ),
+            "widget_last_resp_url": getattr(
+                getattr(garmin_client.client, "_widget_last_resp", None), "url", None
+            ),
+        }
+        payload = json.dumps(state)
+        return self.PENDING_MFA_PREFIX + base64.b64encode(payload.encode()).decode()
+
+    def _decode_pending_mfa_state(self, encoded_state: str) -> Dict[str, Any]:
+        """Load pending MFA client state from storage."""
+        if not encoded_state or not encoded_state.startswith(self.PENDING_MFA_PREFIX):
+            raise ValueError("No pending MFA state found")
+
+        raw = encoded_state[len(self.PENDING_MFA_PREFIX) :]
+        decoded = base64.b64decode(raw.encode()).decode()
+        return json.loads(decoded)
+
+    def _restore_pending_mfa_state(self, garmin_client: Garmin, encoded_state: str) -> None:
+        """Restore pending MFA challenge state onto the Garmin client."""
+        state = self._decode_pending_mfa_state(encoded_state)
+
+        session = self._create_mfa_session(state)
+        cookies = state.get("cookies") or {}
+        for key, value in cookies.items():
+            session.cookies.set(key, value)
+
+        garmin_client.client._mfa_session = session
+        garmin_client.client._mfa_flow = state.get("flow") or "portal"
+        garmin_client.client._mfa_method = state.get("method") or "email"
+        garmin_client.client._mfa_login_params = state.get("login_params") or {}
+        garmin_client.client._mfa_post_headers = state.get("post_headers") or {}
+        garmin_client.client._mfa_service_url = state.get("service_url")
+        garmin_client.client._portal_service_url = state.get("portal_service_url") or getattr(
+            garmin_client.client, "_portal_service_url", None
+        )
+        garmin_client.client._sso = state.get("sso") or getattr(garmin_client.client, "_sso", None)
+
+        if state.get("widget_last_resp_text"):
+            garmin_client.client._widget_last_resp = _StoredResponse(
+                text=state["widget_last_resp_text"],
+                url=state.get("widget_last_resp_url") or "",
+            )
+
+    def _create_mfa_session(self, state: Dict[str, Any]) -> Any:
+        """Create an HTTP session compatible with the MFA flow that created the challenge."""
+        session_module = state.get("session_module") or ""
+        if session_module.startswith("curl_cffi"):
+            try:
+                from curl_cffi import requests as cffi_requests
+
+                return cffi_requests.Session(impersonate="chrome", timeout=30)
+            except Exception as e:
+                logger.warning(f"Failed to restore curl_cffi MFA session, using requests: {e}")
+
+        return requests.Session()
 
     def save_credentials(self, user: User, email: str, password: str) -> GarminAuth:
         """
@@ -41,19 +125,17 @@ class GarminService:
         Returns:
             Created or updated GarminAuth object
         """
-        # Encrypt credentials
         encrypted_email = encrypt(email)
         encrypted_password = encrypt(password)
 
-        # Check if auth already exists
         garmin_auth = self.db.query(GarminAuth).filter(GarminAuth.user_id == user.id).first()
 
         if garmin_auth:
-            # Update existing auth
             garmin_auth.encrypted_email = encrypted_email
             garmin_auth.encrypted_password = encrypted_password
+            garmin_auth.encrypted_mfa_token = None
+            garmin_auth.session_data = None
         else:
-            # Create new auth
             garmin_auth = GarminAuth(
                 user_id=user.id,
                 encrypted_email=encrypted_email,
@@ -80,44 +162,35 @@ class GarminService:
             logger.error(f"No Garmin credentials found for user {user.id}")
             return False
 
-        # Decrypt credentials
         email = decrypt(garmin_auth.encrypted_email)
         password = decrypt(garmin_auth.encrypted_password)
 
         try:
-            # Try to restore session from database
-            if garmin_auth.session_data:
+            if garmin_auth.session_data and not garmin_auth.session_data.startswith(self.PENDING_MFA_PREFIX):
                 try:
                     logger.info(
                         f"Attempting to restore Garmin session from database for user {user.id}"
                     )
-                    # Initialize Garmin client
                     self.client = Garmin()
-
-                    # Load saved tokens into garth
-                    self.client.garth.loads(garmin_auth.session_data)
-
+                    self.client.login(tokenstore=garmin_auth.session_data)
                     logger.info(f"Successfully restored Garmin session for user {user.id}")
                     return True
                 except Exception as e:
                     logger.warning(f"Failed to restore session, will re-login: {e}")
 
-            # Fresh login required
             logger.info(f"Performing fresh Garmin login for user {user.id}")
-            self.client = Garmin(email=email, password=password)
-
-            # Login returns tuple: (status, mfa_data) where status can be "needs_mfa" or None
+            self.client = Garmin(email=email, password=password, return_on_mfa=True)
             login_result = self.client.login()
 
-            # Check if MFA is required
             if login_result and login_result[0] == "needs_mfa":
-                error_msg = "MFA/2FA is required for this Garmin account. Please disable 2FA or use app-specific password."
-                logger.error(f"{error_msg} for user {user.id}")
+                garmin_auth.encrypted_mfa_token = encrypt(self._encode_pending_mfa_state(self.client))
+                garmin_auth.session_data = None
+                self.db.commit()
+                logger.info(f"Garmin MFA challenge started for user {user.id}")
                 return False
 
-            # Save tokens to database as JSON
-            session_json = self.client.garth.dumps()
-            garmin_auth.session_data = session_json
+            garmin_auth.session_data = self.client.client.dumps()
+            garmin_auth.encrypted_mfa_token = None
             self.db.commit()
 
             logger.info(f"Successfully logged in to Garmin for user {user.id}")
@@ -132,6 +205,68 @@ class GarminService:
         except Exception as e:
             logger.error(f"Error connecting to Garmin for user {user.id}: {e}", exc_info=True)
             return False
+
+    def complete_mfa(self, user: User, mfa_code: str) -> tuple[bool, Optional[str]]:
+        """Complete a pending Garmin MFA login and persist session data."""
+        garmin_auth = user.garmin_auth
+        if not garmin_auth or not garmin_auth.encrypted_mfa_token:
+            return False, "No pending Garmin MFA challenge found"
+
+        try:
+            pending_state = decrypt(garmin_auth.encrypted_mfa_token)
+            email = decrypt(garmin_auth.encrypted_email)
+            password = decrypt(garmin_auth.encrypted_password)
+
+            self.client = Garmin(email=email, password=password, return_on_mfa=True)
+            self._restore_pending_mfa_state(self.client, pending_state)
+            self.client.resume_login({}, mfa_code)
+
+            garmin_auth.session_data = self.client.client.dumps()
+            garmin_auth.encrypted_mfa_token = None
+            self.db.commit()
+            return True, None
+        except GarminConnectAuthenticationError as e:
+            logger.error(f"Garmin MFA verification failed for user {user.id}: {e}")
+            return False, f"MFA verification failed: {e}"
+        except Exception as e:
+            logger.error(f"Error completing Garmin MFA for user {user.id}: {e}", exc_info=True)
+            return False, str(e)
+
+    def verify_credentials(self, email: str, password: str) -> tuple[bool, Optional[str], Optional[str]]:
+        """
+        Verify Garmin credentials are valid without storing them.
+
+        Args:
+            email: Garmin Connect email
+            password: Garmin Connect password
+
+        Returns:
+            Tuple of (success: bool, error_message: Optional[str], status: Optional[str])
+        """
+        try:
+            logger.info(f"Verifying Garmin credentials for email: {email[:3]}***")
+            client = Garmin(email=email, password=password, return_on_mfa=True)
+            login_result = client.login()
+
+            if login_result and login_result[0] == "needs_mfa":
+                logger.info("Garmin credentials accepted, MFA required")
+                return False, None, "needs_mfa"
+
+            logger.info("Garmin credentials verified successfully")
+            return True, None, None
+
+        except GarminConnectAuthenticationError as e:
+            error_msg = str(e)
+            logger.warning(f"Garmin authentication error during verification: {error_msg}")
+            return False, error_msg, None
+        except GarminConnectConnectionError as e:
+            error_msg = f"Connection error: {str(e)}"
+            logger.warning(f"Garmin connection error during verification: {error_msg}")
+            return False, error_msg, None
+        except Exception as e:
+            error_msg = f"Unexpected error: {str(e)}"
+            logger.warning(f"Garmin verification error: {error_msg}", exc_info=True)
+            return False, error_msg, None
 
     def upload_activity(
         self, file_path: str, activity_format: str = ".gpx"
@@ -151,30 +286,23 @@ class GarminService:
             return None
 
         try:
-            # Verify file exists
             import os
 
             if not os.path.exists(file_path):
                 logger.error(f"Activity file does not exist: {file_path}")
                 return None
 
-            # New garminconnect API expects file path directly
-            # Supported formats: .fit .gpx .tcx
             logger.info(f"Uploading activity from {file_path}")
             upload_response = self.client.upload_activity(file_path)
 
             logger.info(f"Upload response type: {type(upload_response)}")
             logger.info(f"Upload response: {upload_response}")
 
-            # Parse response to extract activity ID
-            # Response format varies, could be dict or object with activity_id
             if isinstance(upload_response, dict):
                 return upload_response
             elif hasattr(upload_response, "__dict__"):
-                # Convert object to dict
                 return vars(upload_response)
             else:
-                # Return as-is wrapped in dict
                 return {"raw_response": upload_response}
 
         except GarminConnectConnectionError as e:
@@ -200,15 +328,13 @@ class GarminService:
             return None
 
         try:
-            # Use get_activities_by_date to fetch activities from start_date to today
             logger.info(f"Fetching Garmin activities from {start_date} onwards")
             activities = self.client.get_activities_by_date(
-                startdate=start_date, enddate=None  # None means up to today
+                startdate=start_date, enddate=None
             )
 
             if activities:
                 logger.info(f"Fetched {len(activities)} activities from {start_date}")
-                # Garmin returns in descending order by default, which is what we want (newest first)
                 return activities
             else:
                 logger.info(f"No activities found from {start_date}")
@@ -233,7 +359,6 @@ class GarminService:
             return None
 
         try:
-            # Try get_activity first (basic activity data)
             try:
                 logger.info(f"Fetching activity {activity_id} using get_activity()")
                 activity = self.client.get_activity(activity_id)
@@ -245,7 +370,6 @@ class GarminService:
             except Exception as e:
                 logger.warning(f"get_activity() failed for {activity_id}: {e}")
 
-            # Fallback: Try get_activity_details (more comprehensive data)
             try:
                 logger.info(f"Fetching activity {activity_id} using get_activity_details()")
                 activity = self.client.get_activity_details(activity_id)
@@ -257,149 +381,41 @@ class GarminService:
             except Exception as e:
                 logger.warning(f"get_activity_details() failed for {activity_id}: {e}")
 
-            # If both methods fail, log error
-            logger.error(f"Could not fetch activity {activity_id} using any method")
+            logger.error(f"Failed to fetch activity {activity_id} with all available methods")
             return None
 
         except Exception as e:
             logger.error(f"Error fetching Garmin activity {activity_id}: {e}", exc_info=True)
             return None
 
-    def download_activity_original(self, activity_id: str, output_path: str) -> Optional[str]:
+    def get_body_composition(self, date: str = None) -> Optional[Dict[str, Any]]:
         """
-        Download original activity file (FIT) from Garmin Connect.
+        Get body composition data from Garmin Connect.
 
         Args:
-            activity_id: Garmin activity ID
-            output_path: Path to save the FIT file
+            date: Date in format YYYY-MM-DD (defaults to today)
 
         Returns:
-            Path to saved FIT file or None if error
+            Dict with weight and body composition data or None if error
         """
         if not self.client:
             logger.error("Garmin client not connected")
             return None
 
         try:
-            import io
-            import os
-            import zipfile
+            if date is None:
+                date = datetime.now().strftime("%Y-%m-%d")
 
-            logger.info(f"Downloading original activity file for activity {activity_id}")
+            logger.info(f"Fetching body composition for date: {date}")
+            body_comp = self.client.get_body_composition(date)
 
-            # Download activity in ORIGINAL format (returns zip file bytes)
-            zip_data = self.client.download_activity(
-                activity_id, dl_fmt=self.client.ActivityDownloadFormat.ORIGINAL
-            )
-
-            if not zip_data:
-                logger.error(f"No data returned for activity {activity_id}")
+            if body_comp:
+                logger.info(f"Successfully fetched body composition for {date}")
+                return body_comp
+            else:
+                logger.info(f"No body composition data found for {date}")
                 return None
 
-            # Extract FIT file from zip
-            with zipfile.ZipFile(io.BytesIO(zip_data)) as zip_file:
-                # Find FIT file in zip (usually there's only one)
-                fit_files = [f for f in zip_file.namelist() if f.lower().endswith(".fit")]
-
-                if not fit_files:
-                    logger.error(f"No FIT file found in downloaded zip for activity {activity_id}")
-                    return None
-
-                # Extract the first FIT file
-                fit_filename = fit_files[0]
-                logger.info(f"Extracting {fit_filename} from zip")
-
-                fit_data = zip_file.read(fit_filename)
-
-                # Save to output path
-                os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                with open(output_path, "wb") as f:
-                    f.write(fit_data)
-
-                logger.info(f"Saved FIT file to {output_path} ({len(fit_data)} bytes)")
-                return output_path
-
         except Exception as e:
-            logger.error(f"Error downloading activity {activity_id}: {e}", exc_info=True)
+            logger.error(f"Error fetching body composition for {date}: {e}", exc_info=True)
             return None
-
-    def verify_credentials(self, email: str, password: str) -> tuple[bool, Optional[str]]:
-        """
-        Verify Garmin credentials by attempting login.
-
-        Args:
-            email: Garmin Connect email
-            password: Garmin Connect password
-
-        Returns:
-            Tuple of (success: bool, error_message: Optional[str])
-        """
-        try:
-            logger.info(f"Attempting to verify Garmin credentials for {email}")
-
-            # Use garminconnect with the correct login pattern
-            client = Garmin(email=email, password=password)
-
-            # Login returns tuple: (status, mfa_data)
-            login_result = client.login()
-
-            # Check if MFA is required
-            if login_result and login_result[0] == "needs_mfa":
-                error_msg = "MFA/2FA is required for this account. Please disable 2FA or use app-specific password."
-                logger.warning(error_msg)
-                return False, error_msg
-
-            logger.info("Garmin credentials verified successfully")
-            return True, None
-
-        except GarminConnectAuthenticationError as e:
-            error_msg = f"Authentication failed: {str(e)}"
-            logger.error(error_msg)
-            return False, error_msg
-        except GarminConnectConnectionError as e:
-            error_msg = f"Connection error: {str(e)}"
-            logger.error(error_msg)
-            return False, error_msg
-        except Exception as e:
-            error_msg = f"{type(e).__name__}: {str(e) if str(e) else 'No details available'}"
-            logger.error(f"Error verifying credentials: {error_msg}", exc_info=True)
-            return False, error_msg
-
-    def upload_weight(self, weight_kg: float, timestamp: Optional[datetime] = None) -> bool:
-        """
-        Upload weight measurement to Garmin Connect.
-
-        Args:
-            weight_kg: Weight in kilograms
-            timestamp: Measurement timestamp (optional, defaults to now)
-
-        Returns:
-            True if success, False otherwise
-        """
-        if not self.client:
-            logger.error("Garmin client not connected")
-            return False
-
-        try:
-            logger.info(f"Uploading weight {weight_kg}kg to Garmin")
-            
-            # Timestamp format expected by garminconnect is not strictly documented in the method signature 
-            # we saw earlier (it said str | None), but usually it handles it. 
-            # If None, it uses current time.
-            
-            # garminconnect.add_body_composition(timestamp, weight, ...)
-            # timestamp can be ISO string or None
-            
-            ts_str = timestamp.isoformat() if timestamp else None
-            
-            self.client.add_body_composition(
-                timestamp=ts_str,
-                weight=weight_kg
-            )
-            
-            logger.info("Successfully uploaded weight to Garmin")
-            return True
-
-        except Exception as e:
-            logger.error(f"Error uploading weight to Garmin: {e}", exc_info=True)
-            return False

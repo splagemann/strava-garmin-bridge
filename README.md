@@ -23,7 +23,7 @@ Automatically sync your activities from Strava to Garmin Connect with customizab
 
 ## Prerequisites
 
-- Python 3.11+
+- Python 3.12+
 - PostgreSQL
 - Redis
 - Docker & Docker Compose (optional)
@@ -62,19 +62,26 @@ cp backend/.env.example .env
    - `BASE_URL`: Backend API URL (default: http://localhost:8000)
    - `FRONTEND_URL`: Frontend URL for OAuth callbacks (default: http://localhost:3000)
 
-4. **Start services**
+4. **Start backend services**
 ```bash
-docker-compose up -d
+docker compose up -d db redis backend celery celery-beat
 ```
 
-5. **Check service status**
+5. **Start the frontend separately**
 ```bash
-docker-compose ps
-docker-compose logs -f web
+cd frontend
+npm install
+npm run dev
 ```
-# Note: The frontend is no longer managed by Docker Compose. Please run it separately using `npm run dev` as described in the "Frontend Development" section.
+
+6. **Check service status**
+```bash
+docker compose ps
+docker compose logs -f backend
+```
 
 Services will be available at:
+- **Frontend**: http://localhost:5173
 - **Backend API**: http://localhost:8000
 - **API Docs**: http://localhost:8000/docs
 
@@ -131,7 +138,7 @@ redis-server
 3. Set "Authorization Callback Domain" to match your frontend URL:
    - For local development: `localhost`
    - For production: your domain (e.g., `yourdomain.com`)
-4. The callback URL will be: `http://localhost:3000/auth/callback` (or your FRONTEND_URL + `/auth/callback`)
+4. The callback URL will be: `http://localhost:5173/auth/callback` (or your FRONTEND_URL + `/auth/callback`)
 5. Copy Client ID and Client Secret to `.env`
 
 ### Scheduled Polling
@@ -146,7 +153,7 @@ redis-server
 
 ### 1. Connect Strava Account
 
-1. Open your browser and navigate to: `http://localhost:3000/auth`
+1. Open your browser and navigate to: `http://localhost:5173/auth`
 2. Click "Connect with Strava"
 3. Authorize the application on Strava
 4. You'll be redirected back to complete the setup
@@ -266,6 +273,21 @@ npm run dev
 
 The frontend will be available at http://localhost:5173 and will proxy API requests to http://localhost:8000.
 
+### Docker-first Development
+
+On hosts without Python 3.12 available locally, use Docker for the backend stack and run the frontend natively:
+
+```bash
+docker compose up -d db redis backend celery celery-beat
+cd frontend
+npm install
+npm run dev
+```
+
+The backend container is responsible for running migrations. Celery and Celery Beat wait for the backend and skip migrations to avoid startup races.
+
+For more details, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
 ### Backend Development
 
 ### Running tests
@@ -324,6 +346,7 @@ Pre-commit hooks will validate your commit messages automatically.
 
 ### Documentation
 
+- **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** - Local development guide
 - **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Production deployment guide
 - **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)** - Environment variables and configuration guide
 - **[docs/UPGRADE.md](docs/UPGRADE.md)** - Upgrade and rollback instructions
