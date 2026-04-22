@@ -97,5 +97,8 @@ docker-compose.override.yml
 tmp/
 temp/
 
+# Local development helpers / generated artifacts
+.artifacts/
+
 # Pre-commit
 .pre-commit-config.yaml.bak

@@ -48,6 +48,7 @@ services:
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
       - ENVIRONMENT=development
       - LOG_LEVEL=INFO
+      - RUN_MIGRATIONS=true
     depends_on:
       db:
         condition: service_healthy
@@ -73,17 +74,19 @@ services:
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
       - ENVIRONMENT=development
       - LOG_LEVEL=INFO
+      - RUN_MIGRATIONS=false
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+      backend:
+        condition: service_started
 
   # Celery Beat (for scheduled tasks)
   celery-beat:
     build: ./backend
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["rm -f /backend/celerybeat-schedule* && /docker-entrypoint.sh celery -A app.celery_app beat --loglevel=info"]
+    command: /bin/sh -c "rm -f /backend/celerybeat-schedule* && celery -A app.celery_app beat --loglevel=info"
     volumes:
       - ./backend:/backend
     environment:
@@ -99,11 +102,14 @@ services:
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
       - ENVIRONMENT=development
       - LOG_LEVEL=INFO
+      - RUN_MIGRATIONS=false
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+      backend:
+        condition: service_started
 
 volumes:
   postgres_data:

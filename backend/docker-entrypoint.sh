@@ -3,6 +3,8 @@ set -e
 
 echo "Starting Strava-Garmin Sync Bridge backend..."
 
+run_migrations="${RUN_MIGRATIONS:-true}"
+
 # Extract database connection details from DATABASE_URL
 # Format: postgresql://user:password@host:port/dbname
 if [ -n "$DATABASE_URL" ]; then
@@ -27,12 +29,13 @@ if [ -n "$DATABASE_URL" ]; then
         sleep 2
     done
 
-    echo "PostgreSQL is up - running database migrations..."
-
-    # Run database migrations
-    alembic upgrade head
-
-    echo "Migrations completed successfully!"
+    if [ "$run_migrations" = "true" ]; then
+        echo "PostgreSQL is up - running database migrations..."
+        alembic upgrade head
+        echo "Migrations completed successfully!"
+    else
+        echo "PostgreSQL is up - skipping database migrations (RUN_MIGRATIONS=$run_migrations)"
+    fi
 else
     echo "WARNING: DATABASE_URL not set, skipping database wait and migrations"
 fi
