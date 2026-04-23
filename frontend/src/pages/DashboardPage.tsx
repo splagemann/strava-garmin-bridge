@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useSync } from '../hooks/useSync';
 import { toast } from 'sonner';
@@ -10,12 +10,35 @@ import { ActivitiesList } from '../components/ActivitiesList';
 type SyncDirection = 'strava_to_garmin' | 'garmin_to_strava';
 
 export default function DashboardPage() {
-  const { authStatus, connectWithings } = useAuth();
+  const {
+    authStatus,
+    connectWithings,
+    saveGarminCredentials,
+    verifyGarminMfa,
+    isSavingGarmin,
+    isVerifyingGarminMfa,
+  } = useAuth();
   const { syncStats, syncHistory, manualSync, isSyncing, refetch } = useSync();
   const [activeTab, setActiveTab] = useState<SyncDirection>('strava_to_garmin');
   const [stravaActivityId, setStravaActivityId] = useState('');
   const [garminActivityId, setGarminActivityId] = useState('');
+  const [garminEmail, setGarminEmail] = useState('');
+  const [garminPassword, setGarminPassword] = useState('');
+  const [garminMfaCode, setGarminMfaCode] = useState('');
   const [isSyncingGarmin, setIsSyncingGarmin] = useState(false);
+  const [requiresGarminMfa, setRequiresGarminMfa] = useState(false);
+
+  const garminConnected = !!authStatus?.garmin_connected;
+
+  useEffect(() => {
+    if (!garminConnected && activeTab === 'garmin_to_strava') {
+      setActiveTab('strava_to_garmin');
+    }
+  }, [activeTab, garminConnected]);
+
+  useEffect(() => {
+    setRequiresGarminMfa(!!authStatus?.garmin_requires_mfa);
+  }, [authStatus?.garmin_requires_mfa]);
 
   const handleWithingsConnect = async () => {
     try {
@@ -25,8 +48,46 @@ export default function DashboardPage() {
     }
   };
 
+  const handleGarminSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const response = await saveGarminCredentials({
+        email: garminEmail,
+        password: garminPassword,
+      });
+
+      if (response.requires_mfa) {
+        setRequiresGarminMfa(true);
+        toast.success('Garmin credentials accepted. Enter your MFA code to finish setup.');
+      } else {
+        setGarminEmail('');
+        setGarminPassword('');
+        toast.success('Garmin credentials saved successfully!');
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'Failed to save Garmin credentials');
+    }
+  };
+
+  const handleGarminMfaSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await verifyGarminMfa(garminMfaCode);
+      setGarminMfaCode('');
+      setRequiresGarminMfa(false);
+      toast.success('Garmin MFA verified successfully!');
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'Failed to verify Garmin MFA code');
+    }
+  };
+
   const handleManualSync = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!garminConnected) {
+      toast.error('Connect Garmin before syncing activities.');
+      return;
+    }
+
     try {
       // Keep ID as string to safely handle 64-bit Strava IDs
       await manualSync({ strava_activity_id: stravaActivityId });
@@ -40,6 +101,11 @@ export default function DashboardPage() {
 
   const handleManualSyncGarminToStrava = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!garminConnected) {
+      toast.error('Connect Garmin before syncing activities.');
+      return;
+    }
+
     setIsSyncingGarmin(true);
     try {
       const result = await syncApi.manualSyncGarminToStrava({ garmin_activity_id: garminActivityId });
@@ -66,7 +132,7 @@ export default function DashboardPage() {
       {/* Connections Status */}
       <div className="bg-white rounded-lg shadow p-4 sm:p-6">
         <h2 className="text-lg font-semibold mb-4">Connections</h2>
-        <div className="flex flex-wrap gap-4">
+        <div className="flex flex-wrap gap-4 mb-6">
           <div className="flex items-center gap-2 px-3 py-2 bg-green-50 text-green-700 rounded-md border border-green-200">
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
               <path
@@ -77,16 +143,25 @@ export default function DashboardPage() {
             </svg>
             <span className="font-medium">Strava</span>
           </div>
-          <div className="flex items-center gap-2 px-3 py-2 bg-green-50 text-green-700 rounded-md border border-green-200">
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-              <path
-                fillRule="evenodd"
-                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                clipRule="evenodd"
-              />
-            </svg>
-            <span className="font-medium">Garmin</span>
-          </div>
+          {garminConnected ? (
+            <div className="flex items-center gap-2 px-3 py-2 bg-green-50 text-green-700 rounded-md border border-green-200">
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              <span className="font-medium">Garmin</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 text-amber-700 rounded-md border border-amber-200">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+              </svg>
+              <span className="font-medium">{requiresGarminMfa ? 'Garmin MFA Required' : 'Garmin Disconnected'}</span>
+            </div>
+          )}
 
           {authStatus?.withings_connected ? (
             <div className="flex items-center gap-2 px-3 py-2 bg-green-50 text-green-700 rounded-md border border-green-200">
@@ -111,6 +186,80 @@ export default function DashboardPage() {
             </button>
           )}
         </div>
+
+        {!garminConnected && (
+          <div className="border-t pt-4">
+            <h3 className="text-base font-semibold mb-2">Connect Garmin</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Garmin is optional for app access, but required for activity syncs and Withings weight sync.
+            </p>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <form onSubmit={handleGarminSubmit} className="space-y-3">
+                <div>
+                  <label htmlFor="garmin-email" className="block text-sm font-medium text-gray-700 mb-1">
+                    Garmin Email
+                  </label>
+                  <input
+                    id="garmin-email"
+                    type="email"
+                    required
+                    value={garminEmail}
+                    onChange={(e) => setGarminEmail(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="garmin-password" className="block text-sm font-medium text-gray-700 mb-1">
+                    Garmin Password
+                  </label>
+                  <input
+                    id="garmin-password"
+                    type="password"
+                    required
+                    value={garminPassword}
+                    onChange={(e) => setGarminPassword(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={isSavingGarmin}
+                  className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors disabled:opacity-50"
+                >
+                  {isSavingGarmin ? 'Saving...' : requiresGarminMfa ? 'Restart Garmin Login' : 'Save Garmin Credentials'}
+                </button>
+              </form>
+
+              {requiresGarminMfa && (
+                <form onSubmit={handleGarminMfaSubmit} className="space-y-3">
+                  <p className="text-sm text-gray-600">
+                    Enter the Garmin multi-factor authentication code from your email, SMS, or authenticator app.
+                  </p>
+                  <div>
+                    <label htmlFor="garmin-mfa-code" className="block text-sm font-medium text-gray-700 mb-1">
+                      MFA Code
+                    </label>
+                    <input
+                      id="garmin-mfa-code"
+                      type="text"
+                      required
+                      value={garminMfaCode}
+                      onChange={(e) => setGarminMfaCode(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={isVerifyingGarminMfa}
+                    className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-md transition-colors disabled:opacity-50"
+                  >
+                    {isVerifyingGarminMfa ? 'Verifying...' : 'Verify Garmin MFA'}
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Stats Grid */}
@@ -152,10 +301,13 @@ export default function DashboardPage() {
             </button>
             <button
               onClick={() => setActiveTab('garmin_to_strava')}
+              disabled={!garminConnected}
               className={`flex-1 px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-medium transition-colors ${
                 activeTab === 'garmin_to_strava'
                   ? 'border-b-2 border-primary text-primary'
-                  : 'text-gray-500 hover:text-gray-700'
+                  : garminConnected
+                    ? 'text-gray-500 hover:text-gray-700'
+                    : 'text-gray-300 cursor-not-allowed'
               }`}
             >
               <span className="hidden sm:inline">Garmin → Strava</span>
@@ -168,6 +320,11 @@ export default function DashboardPage() {
           {activeTab === 'strava_to_garmin' ? (
             <div>
               <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Sync from Strava to Garmin</h2>
+              {!garminConnected && (
+                <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-4">
+                  Connect Garmin before syncing Strava activities to Garmin.
+                </p>
+              )}
               <form onSubmit={handleManualSync} className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                 <input
                   type="text"
@@ -181,7 +338,7 @@ export default function DashboardPage() {
                 />
                 <button
                   type="submit"
-                  disabled={isSyncing}
+                  disabled={isSyncing || !garminConnected}
                   className="bg-primary hover:bg-primary/90 text-white px-4 sm:px-6 py-2 rounded-md font-medium disabled:opacity-50 text-sm sm:text-base whitespace-nowrap"
                 >
                   {isSyncing ? 'Syncing...' : 'Sync Activity'}

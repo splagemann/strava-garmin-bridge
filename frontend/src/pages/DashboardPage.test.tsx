@@ -47,14 +47,20 @@ describe('DashboardPage', () => {
   ];
 
   const mockConnectWithings = vi.fn();
+  const mockSaveGarminCredentials = vi.fn();
+  const mockVerifyGarminMfa = vi.fn();
   const mockManualSync = vi.fn();
   const mockRefetch = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
     (useAuth as any).mockReturnValue({
-      authStatus: { withings_connected: false },
+      authStatus: { garmin_connected: true, withings_connected: false },
       connectWithings: mockConnectWithings,
+      saveGarminCredentials: mockSaveGarminCredentials,
+      verifyGarminMfa: mockVerifyGarminMfa,
+      isSavingGarmin: false,
+      isVerifyingGarminMfa: false,
     });
     (useSync as any).mockReturnValue({
       syncStats: mockSyncStats,
@@ -76,6 +82,50 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Strava')).toBeInTheDocument();
     expect(screen.getByText('Garmin')).toBeInTheDocument();
     expect(screen.getByText('Connect Withings')).toBeInTheDocument();
+  });
+
+  it('shows Garmin setup and blocks manual sync when Garmin is disconnected', async () => {
+    (useAuth as any).mockReturnValue({
+      authStatus: { garmin_connected: false, withings_connected: false },
+      connectWithings: mockConnectWithings,
+      saveGarminCredentials: mockSaveGarminCredentials,
+      verifyGarminMfa: mockVerifyGarminMfa,
+      isSavingGarmin: false,
+      isVerifyingGarminMfa: false,
+    });
+
+    render(<DashboardPage />);
+
+    expect(screen.getByText('Garmin Disconnected')).toBeInTheDocument();
+    expect(screen.getByText('Connect Garmin')).toBeInTheDocument();
+    expect(screen.getByText('Connect Garmin before syncing Strava activities to Garmin.')).toBeInTheDocument();
+    expect(screen.getByText('Sync Activity')).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Garmin → Strava/ })).toBeDisabled();
+  });
+
+  it('handles Garmin credentials submission', async () => {
+    mockSaveGarminCredentials.mockResolvedValue({ requires_mfa: false });
+    (useAuth as any).mockReturnValue({
+      authStatus: { garmin_connected: false, withings_connected: false },
+      connectWithings: mockConnectWithings,
+      saveGarminCredentials: mockSaveGarminCredentials,
+      verifyGarminMfa: mockVerifyGarminMfa,
+      isSavingGarmin: false,
+      isVerifyingGarminMfa: false,
+    });
+
+    render(<DashboardPage />);
+
+    fireEvent.change(screen.getByLabelText('Garmin Email'), { target: { value: 'test@garmin.com' } });
+    fireEvent.change(screen.getByLabelText('Garmin Password'), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByText('Save Garmin Credentials'));
+
+    await waitFor(() => {
+      expect(mockSaveGarminCredentials).toHaveBeenCalledWith({
+        email: 'test@garmin.com',
+        password: 'password123',
+      });
+    });
   });
 
   it('handles Withings connection', async () => {

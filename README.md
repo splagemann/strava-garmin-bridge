@@ -156,11 +156,11 @@ redis-server
 1. Open your browser and navigate to: `http://localhost:5173/auth`
 2. Click "Connect with Strava"
 3. Authorize the application on Strava
-4. You'll be redirected back to complete the setup
+4. You'll be redirected back to the dashboard
 
-### 2. Configure Garmin Credentials
+### 2. Configure Garmin Credentials (Optional)
 
-After connecting Strava, you'll be prompted to add your Garmin credentials on the same page. Enter your Garmin Connect email and password to complete the setup.
+After connecting Strava, you can use the app immediately. Add Garmin credentials from the dashboard when you want to enable Strava-to-Garmin sync, Garmin-to-Strava sync, or Withings-to-Garmin weight sync.
 
 ### 3. Set Up Activity Filters (Optional)
 
@@ -219,8 +219,8 @@ strava-garmin-bridge/
 
 ## How It Works
 
-1. **User connects Strava**: Frontend initiates OAuth2 flow, backend stores access/refresh tokens
-2. **User adds Garmin credentials**: Credentials are encrypted and stored securely
+1. **User connects Strava**: Frontend initiates OAuth2 flow, backend stores access/refresh tokens and issues an app session
+2. **User optionally adds Garmin credentials**: Credentials are encrypted and stored securely
 3. **Scheduled polling**: Celery beat polls Strava every 5 minutes for activities from the last 7 days
 4. **Duplicate check**: Activities already synced are automatically skipped
 5. **Filter check**: Activities are checked against user's filter rules before syncing
@@ -246,10 +246,10 @@ strava-garmin-bridge/
 3. Check Celery worker logs: `docker-compose logs -f celery`
 4. Verify your activity filters aren't excluding activities
 
-### Garmin login fails
+### Garmin connection fails
 
 - Verify credentials are correct
-- Check if 2FA is enabled (may require manual session setup)
+- Check if MFA is enabled and complete the in-app MFA prompt
 - Review Garmin service logs
 
 ### Database connection issues

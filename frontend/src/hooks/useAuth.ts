@@ -63,7 +63,7 @@ export function useAuth() {
     authStatus,
     isLoading,
     error,
-    isAuthenticated: !!(authStatus?.strava_connected && authStatus?.garmin_connected),
+    isAuthenticated: !!authStatus?.strava_connected,
     hasAuthToken,
     connectStrava,
     connectWithings,
