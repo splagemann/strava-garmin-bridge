@@ -29,6 +29,20 @@ export function useAuth() {
     },
   });
 
+  const disconnectGarminMutation = useMutation({
+    mutationFn: authApi.disconnectGarmin,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.authStatus });
+    },
+  });
+
+  const disconnectWithingsMutation = useMutation({
+    mutationFn: authApi.disconnectWithings,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.authStatus });
+    },
+  });
+
   const connectStrava = async () => {
     try {
       await authApi.connectStrava();
@@ -55,6 +69,14 @@ export function useAuth() {
     return verifyGarminMfaMutation.mutateAsync({ code });
   };
 
+  const disconnectGarmin = async () => {
+    return disconnectGarminMutation.mutateAsync();
+  };
+
+  const disconnectWithings = async () => {
+    return disconnectWithingsMutation.mutateAsync();
+  };
+
   const logout = () => {
     authApi.logout();
   };
@@ -69,9 +91,13 @@ export function useAuth() {
     connectWithings,
     saveGarminCredentials,
     verifyGarminMfa,
+    disconnectGarmin,
+    disconnectWithings,
     logout,
     isSavingGarmin: saveGarminMutation.isPending,
     isVerifyingGarminMfa: verifyGarminMfaMutation.isPending,
+    isDisconnectingGarmin: disconnectGarminMutation.isPending,
+    isDisconnectingWithings: disconnectWithingsMutation.isPending,
     garminError: saveGarminMutation.error ?? verifyGarminMfaMutation.error,
   };
 }

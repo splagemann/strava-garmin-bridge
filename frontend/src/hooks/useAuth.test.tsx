@@ -12,6 +12,8 @@ vi.mock('../api', () => ({
     getAuthStatus: vi.fn(),
     saveGarminCredentials: vi.fn(),
     verifyGarminMfa: vi.fn(),
+    disconnectGarmin: vi.fn(),
+    disconnectWithings: vi.fn(),
     connectStrava: vi.fn(),
     connectWithings: vi.fn(),
     logout: vi.fn(),
@@ -101,6 +103,24 @@ describe('useAuth', () => {
 
     result.current.logout();
     expect(authApi.logout).toHaveBeenCalled();
+  });
+
+  it('disconnectGarmin calls mutation', async () => {
+    (clientApi.isAuthenticated as any).mockReturnValue(true);
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await result.current.disconnectGarmin();
+
+    expect(authApi.disconnectGarmin).toHaveBeenCalled();
+  });
+
+  it('disconnectWithings calls mutation', async () => {
+    (clientApi.isAuthenticated as any).mockReturnValue(true);
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await result.current.disconnectWithings();
+
+    expect(authApi.disconnectWithings).toHaveBeenCalled();
   });
 
   it('saveGarminCredentials calls mutation', async () => {

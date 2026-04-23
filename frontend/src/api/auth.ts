@@ -85,6 +85,16 @@ export const authApi = {
     return response.data;
   },
 
+  disconnectGarmin: async (): Promise<{ message: string }> => {
+    const response = await apiClient.delete<{ message: string }>('/api/v1/auth/garmin');
+    return response.data;
+  },
+
+  disconnectWithings: async (): Promise<{ message: string }> => {
+    const response = await apiClient.delete<{ message: string }>('/api/v1/auth/withings');
+    return response.data;
+  },
+
   getAuthStatus: async (): Promise<AuthStatus> => {
     const response = await apiClient.get<AuthStatus>('/api/v1/auth/status');
     return response.data;

@@ -133,6 +133,15 @@ class WithingsService:
         self.db.refresh(withings_auth)
         return withings_auth
 
+    def disconnect(self, user: User) -> None:
+        """Delete the stored Withings auth record for a user, if present."""
+        withings_auth = self.db.query(WithingsAuth).filter(WithingsAuth.user_id == user.id).first()
+        if not withings_auth:
+            return
+
+        self.db.delete(withings_auth)
+        self.db.commit()
+
     def _refresh_token(self, withings_auth: WithingsAuth) -> WithingsAuth:
         """
         Refresh expired access token.

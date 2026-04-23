@@ -49,6 +49,8 @@ describe('DashboardPage', () => {
   const mockConnectWithings = vi.fn();
   const mockSaveGarminCredentials = vi.fn();
   const mockVerifyGarminMfa = vi.fn();
+  const mockDisconnectGarmin = vi.fn();
+  const mockDisconnectWithings = vi.fn();
   const mockManualSync = vi.fn();
   const mockRefetch = vi.fn();
 
@@ -59,8 +61,12 @@ describe('DashboardPage', () => {
       connectWithings: mockConnectWithings,
       saveGarminCredentials: mockSaveGarminCredentials,
       verifyGarminMfa: mockVerifyGarminMfa,
+      disconnectGarmin: mockDisconnectGarmin,
+      disconnectWithings: mockDisconnectWithings,
       isSavingGarmin: false,
       isVerifyingGarminMfa: false,
+      isDisconnectingGarmin: false,
+      isDisconnectingWithings: false,
     });
     (useSync as any).mockReturnValue({
       syncStats: mockSyncStats,
@@ -79,8 +85,8 @@ describe('DashboardPage', () => {
 
   it('renders connections status', () => {
     render(<DashboardPage />);
-    expect(screen.getByText('Strava')).toBeInTheDocument();
-    expect(screen.getByText('Garmin')).toBeInTheDocument();
+    expect(screen.queryByText('Strava')).not.toBeInTheDocument();
+    expect(screen.getByText('Garmin Connected')).toBeInTheDocument();
     expect(screen.getByText('Connect Withings')).toBeInTheDocument();
   });
 
@@ -90,8 +96,12 @@ describe('DashboardPage', () => {
       connectWithings: mockConnectWithings,
       saveGarminCredentials: mockSaveGarminCredentials,
       verifyGarminMfa: mockVerifyGarminMfa,
+      disconnectGarmin: mockDisconnectGarmin,
+      disconnectWithings: mockDisconnectWithings,
       isSavingGarmin: false,
       isVerifyingGarminMfa: false,
+      isDisconnectingGarmin: false,
+      isDisconnectingWithings: false,
     });
 
     render(<DashboardPage />);
@@ -134,6 +144,66 @@ describe('DashboardPage', () => {
     
     await waitFor(() => {
       expect(mockConnectWithings).toHaveBeenCalled();
+    });
+  });
+
+  it('handles Garmin disconnect when connected', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<DashboardPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+
+    await waitFor(() => {
+      expect(mockDisconnectGarmin).toHaveBeenCalled();
+    });
+  });
+
+  it('handles Garmin disconnect during MFA pending state', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    (useAuth as any).mockReturnValue({
+      authStatus: { garmin_connected: false, garmin_requires_mfa: true, withings_connected: false },
+      connectWithings: mockConnectWithings,
+      saveGarminCredentials: mockSaveGarminCredentials,
+      verifyGarminMfa: mockVerifyGarminMfa,
+      disconnectGarmin: mockDisconnectGarmin,
+      disconnectWithings: mockDisconnectWithings,
+      isSavingGarmin: false,
+      isVerifyingGarminMfa: false,
+      isDisconnectingGarmin: false,
+      isDisconnectingWithings: false,
+    });
+
+    render(<DashboardPage />);
+
+    expect(screen.getByText('Garmin MFA Pending')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+
+    await waitFor(() => {
+      expect(mockDisconnectGarmin).toHaveBeenCalled();
+    });
+  });
+
+  it('handles Withings disconnect when connected', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    (useAuth as any).mockReturnValue({
+      authStatus: { garmin_connected: true, withings_connected: true },
+      connectWithings: mockConnectWithings,
+      saveGarminCredentials: mockSaveGarminCredentials,
+      verifyGarminMfa: mockVerifyGarminMfa,
+      disconnectGarmin: mockDisconnectGarmin,
+      disconnectWithings: mockDisconnectWithings,
+      isSavingGarmin: false,
+      isVerifyingGarminMfa: false,
+      isDisconnectingGarmin: false,
+      isDisconnectingWithings: false,
+    });
+
+    render(<DashboardPage />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Disconnect' })[1]);
+
+    await waitFor(() => {
+      expect(mockDisconnectWithings).toHaveBeenCalled();
     });
   });
 
