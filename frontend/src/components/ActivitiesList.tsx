@@ -20,10 +20,14 @@ export function ActivitiesList({ limit = 10 }: ActivitiesListProps) {
   const loadActivities = useCallback(async () => {
     setLoading(true);
     try {
-      const stravaActivities = await activitiesApi.getStravaActivities(limit).catch(() => []);
-      const garminActivities = garminConnected
-        ? await activitiesApi.getGarminActivities(limit).catch(() => [])
-        : [];
+      const stravaActivitiesPromise = activitiesApi.getStravaActivities(limit).catch(() => []);
+      const garminActivitiesPromise = garminConnected
+        ? activitiesApi.getGarminActivities(limit).catch(() => [])
+        : Promise.resolve([]);
+      const [stravaActivities, garminActivities] = await Promise.all([
+        stravaActivitiesPromise,
+        garminActivitiesPromise,
+      ]);
 
       // Combine and sort by date (most recent first)
       const combined = [...stravaActivities, ...garminActivities].sort(
