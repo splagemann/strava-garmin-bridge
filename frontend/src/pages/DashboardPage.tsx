@@ -15,8 +15,12 @@ export default function DashboardPage() {
     connectWithings,
     saveGarminCredentials,
     verifyGarminMfa,
+    disconnectGarmin,
+    disconnectWithings,
     isSavingGarmin,
     isVerifyingGarminMfa,
+    isDisconnectingGarmin,
+    isDisconnectingWithings,
   } = useAuth();
   const { syncStats, syncHistory, manualSync, isSyncing, refetch } = useSync();
   const [activeTab, setActiveTab] = useState<SyncDirection>('strava_to_garmin');
@@ -29,6 +33,8 @@ export default function DashboardPage() {
   const [requiresGarminMfa, setRequiresGarminMfa] = useState(false);
 
   const garminConnected = !!authStatus?.garmin_connected;
+  const garminNeedsAttention = !!authStatus?.garmin_requires_mfa;
+  const canDisconnectGarmin = garminConnected || garminNeedsAttention;
 
   useEffect(() => {
     if (!garminConnected && activeTab === 'garmin_to_strava') {
@@ -78,6 +84,39 @@ export default function DashboardPage() {
       toast.success('Garmin MFA verified successfully!');
     } catch (error: any) {
       toast.error(error.response?.data?.detail || 'Failed to verify Garmin MFA code');
+    }
+  };
+
+  const handleGarminDisconnect = async () => {
+    if (!window.confirm('Disconnect Garmin? This will remove stored Garmin credentials and any pending MFA state.')) {
+      return;
+    }
+
+    try {
+      await disconnectGarmin();
+      setGarminEmail('');
+      setGarminPassword('');
+      setGarminMfaCode('');
+      setRequiresGarminMfa(false);
+      if (activeTab === 'garmin_to_strava') {
+        setActiveTab('strava_to_garmin');
+      }
+      toast.success('Garmin disconnected successfully.');
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'Failed to disconnect Garmin');
+    }
+  };
+
+  const handleWithingsDisconnect = async () => {
+    if (!window.confirm('Disconnect Withings? This will remove stored Withings access for this app.')) {
+      return;
+    }
+
+    try {
+      await disconnectWithings();
+      toast.success('Withings disconnected successfully.');
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'Failed to disconnect Withings');
     }
   };
 
@@ -133,18 +172,8 @@ export default function DashboardPage() {
       <div className="bg-white rounded-lg shadow p-4 sm:p-6">
         <h2 className="text-lg font-semibold mb-4">Connections</h2>
         <div className="flex flex-wrap gap-4 mb-6">
-          <div className="flex items-center gap-2 px-3 py-2 bg-green-50 text-green-700 rounded-md border border-green-200">
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-              <path
-                fillRule="evenodd"
-                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                clipRule="evenodd"
-              />
-            </svg>
-            <span className="font-medium">Strava</span>
-          </div>
-          {garminConnected ? (
-            <div className="flex items-center gap-2 px-3 py-2 bg-green-50 text-green-700 rounded-md border border-green-200">
+          {canDisconnectGarmin ? (
+            <div className="flex items-center gap-3 px-3 py-2 rounded-md border border-green-200 bg-green-50 text-green-700">
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                 <path
                   fillRule="evenodd"
@@ -152,7 +181,15 @@ export default function DashboardPage() {
                   clipRule="evenodd"
                 />
               </svg>
-              <span className="font-medium">Garmin</span>
+              <span className="font-medium">{garminConnected ? 'Garmin Connected' : 'Garmin MFA Pending'}</span>
+              <button
+                type="button"
+                onClick={handleGarminDisconnect}
+                disabled={isDisconnectingGarmin}
+                className="text-sm font-medium text-red-700 hover:text-red-800 disabled:opacity-50"
+              >
+                {isDisconnectingGarmin ? 'Disconnecting...' : 'Disconnect'}
+              </button>
             </div>
           ) : (
             <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 text-amber-700 rounded-md border border-amber-200">
@@ -164,7 +201,7 @@ export default function DashboardPage() {
           )}
 
           {authStatus?.withings_connected ? (
-            <div className="flex items-center gap-2 px-3 py-2 bg-green-50 text-green-700 rounded-md border border-green-200">
+            <div className="flex items-center gap-3 px-3 py-2 bg-green-50 text-green-700 rounded-md border border-green-200">
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                 <path
                   fillRule="evenodd"
@@ -172,7 +209,15 @@ export default function DashboardPage() {
                   clipRule="evenodd"
                 />
               </svg>
-              <span className="font-medium">Withings</span>
+              <span className="font-medium">Withings Connected</span>
+              <button
+                type="button"
+                onClick={handleWithingsDisconnect}
+                disabled={isDisconnectingWithings}
+                className="text-sm font-medium text-red-700 hover:text-red-800 disabled:opacity-50"
+              >
+                {isDisconnectingWithings ? 'Disconnecting...' : 'Disconnect'}
+              </button>
             </div>
           ) : (
             <button

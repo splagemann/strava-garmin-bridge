@@ -10,6 +10,7 @@ vi.mock('./client', async () => {
     apiClient: {
       get: vi.fn(),
       post: vi.fn(),
+      delete: vi.fn(),
     },
   };
 });
@@ -143,6 +144,28 @@ describe('authApi', () => {
         state: 'state',
         signed_state: 'signed'
       });
+      expect(result).toEqual(mockResponse.data);
+    });
+  });
+
+  describe('disconnects', () => {
+    it('should disconnect Garmin', async () => {
+      const mockResponse = { data: { message: 'Garmin disconnected successfully' } };
+      (apiClient.delete as any).mockResolvedValue(mockResponse);
+
+      const result = await authApi.disconnectGarmin();
+
+      expect(apiClient.delete).toHaveBeenCalledWith('/api/v1/auth/garmin');
+      expect(result).toEqual(mockResponse.data);
+    });
+
+    it('should disconnect Withings', async () => {
+      const mockResponse = { data: { message: 'Withings disconnected successfully' } };
+      (apiClient.delete as any).mockResolvedValue(mockResponse);
+
+      const result = await authApi.disconnectWithings();
+
+      expect(apiClient.delete).toHaveBeenCalledWith('/api/v1/auth/withings');
       expect(result).toEqual(mockResponse.data);
     });
   });

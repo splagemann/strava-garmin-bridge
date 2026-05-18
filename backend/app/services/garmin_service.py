@@ -147,6 +147,15 @@ class GarminService:
         self.db.refresh(garmin_auth)
         return garmin_auth
 
+    def disconnect(self, user: User) -> None:
+        """Delete the stored Garmin auth record for a user, if present."""
+        garmin_auth = self.db.query(GarminAuth).filter(GarminAuth.user_id == user.id).first()
+        if not garmin_auth:
+            return
+
+        self.db.delete(garmin_auth)
+        self.db.commit()
+
     def connect(self, user: User) -> bool:
         """
         Connect to Garmin Connect for a user.

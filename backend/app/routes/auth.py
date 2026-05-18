@@ -184,6 +184,15 @@ async def verify_garmin_mfa(
     return {"message": "Garmin MFA verified successfully", "requires_mfa": False}
 
 
+@router.delete("/garmin")
+async def disconnect_garmin(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    GarminService(db).disconnect(current_user)
+    return {"message": "Garmin disconnected successfully"}
+
+
 @router.get("/withings/auth-url")
 async def get_withings_auth_url():
     try:
@@ -217,6 +226,15 @@ async def exchange_withings_code(
     except Exception as e:
         logger.error(f"Error exchanging Withings code: {e}", exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/withings")
+async def disconnect_withings(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    WithingsService(db).disconnect(current_user)
+    return {"message": "Withings disconnected successfully"}
 
 
 @router.get("/status")
